@@ -1,0 +1,24 @@
+{
+    "name": "bridge-server",
+    "version": "1.0.0",
+    "private": true,
+    "scripts": {
+        "start": "node src/index.js",
+        "dev": "node --watch src/index.js",
+        "test": "node test/api.test.js"
+    },
+    "dependencies": {
+        "@anthropic-ai/sdk": "^0.30.0",
+        "@google/generative-ai": "^0.21.0",
+        "@huggingface/inference": "^4.13.15",
+        "@mistralai/mistralai": "^1.14.1",
+        "cors": "^2.8.5",
+        "dotenv": "^17.3.1",
+        "express": "^4.21.0",
+        "groq-sdk": "^0.37.0",
+        "multer": "^1.4.5-lts.1",
+        "openai": "^4.70.0",
+        "uuid": "^10.0.0",
+        "vectra": "^0.12.3"
+    }
+}

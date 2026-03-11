@@ -1,0 +1,12 @@
+{
+  "name": "roblox-ai-builder",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["web-app", "bridge-server"],
+  "scripts": {
+    "dev:web": "cd web-app && npm run dev",
+    "dev:bridge": "cd bridge-server && node src/index.js",
+    "dev": "concurrently \"npm run dev:bridge\" \"npm run dev:web\"",
+    "build": "cd web-app && npm run build"
+  }
+}

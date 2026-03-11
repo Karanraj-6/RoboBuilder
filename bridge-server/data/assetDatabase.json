@@ -1,0 +1,98 @@
+{
+  "cars": [
+    {
+      "id": 13999609938,
+      "name": "A-Chassis 1.7.1",
+      "type": "vehicle",
+      "hasScripts": true,
+      "note": "12+ scripts – best tunable chassis base – insert and swap bodies"
+    },
+    {
+      "id": 6418230807,
+      "name": "Police Car",
+      "type": "vehicle",
+      "hasScripts": true,
+      "note": "Official Roblox high-quality with realistic physics"
+    },
+    {
+      "id": 6701243463,
+      "name": "Dababy Car",
+      "type": "vehicle",
+      "hasScripts": true,
+      "note": "Fun scripted drivable car"
+    },
+    {
+      "id": 6527733561,
+      "name": "Mercedes Car",
+      "type": "vehicle",
+      "hasScripts": true,
+      "note": "Simple drivable Mercedes model"
+    },
+    {
+      "id": 10017069212,
+      "name": "Drift Car",
+      "type": "vehicle",
+      "hasScripts": true,
+      "note": "Drift-ready with scripts"
+    },
+    {
+      "id": 8512102954,
+      "name": "Official Roblox Car Models",
+      "type": "vehicle",
+      "hasScripts": true,
+      "note": "Pack of official-style cars"
+    },
+    {
+      "id": 1269895074,
+      "name": "Car (Basic)",
+      "type": "vehicle",
+      "hasScripts": true
+    },
+    {
+      "id": 8684518373,
+      "name": "Sport Car",
+      "type": "vehicle",
+      "hasScripts": true,
+      "note": "Free sporty model"
+    },
+    {
+      "id": 5308555269,
+      "name": "Free Cars I Made",
+      "type": "vehicle",
+      "hasScripts": true,
+      "note": "Pack of creator-made free cars"
+    },
+    {
+      "id": 7261183626,
+      "name": "Vehicle 2",
+      "type": "vehicle",
+      "hasScripts": true
+    },
+    {
+      "id": 28568977,
+      "name": "Drivable Police Car",
+      "type": "vehicle",
+      "hasScripts": true
+    },
+    {
+      "id": 10468797,
+      "name": "Classic Red Sports Car",
+      "type": "vehicle",
+      "hasScripts": true
+    },
+    {
+      "id": 100777197960563,
+      "name": "Classic Car 🚗",
+      "type": "vehicle",
+      "hasScripts": true,
+      "note": "Newer free model (2026)"
+    }
+  ],
+  "buildings": [
+    { "id": 86072212324259, "name": "Modern Office", "type": "building" },
+    { "id": 106470926724188, "name": "City Skyscraper", "type": "building" }
+  ],
+  "roads": [
+    { "id": 106470926724188, "name": "Straight Road", "type": "road" }
+  ]
+}
