@@ -11,7 +11,7 @@
  */
 const { v4: uuid } = require('uuid');
 const AgentMemory = require('./memory');
-const { PLAN_SUMMARY_PROMPT, DETAILED_PLAN_PROMPT, STEP_RETRY_PROMPT, DENSIFY_PROMPT } = require('../prompts/system');
+const { PLAN_SUMMARY_PROMPT, DETAILED_PLAN_PROMPT, STEP_RETRY_PROMPT, DENSIFY_PROMPT, REPOSITION_PROMPT } = require('../prompts/system');
 const stateManager = require('./stateManager');
 const commandQueue = require('../queue/commandQueue');
 const validator = require('./validator');
@@ -100,7 +100,7 @@ class AgentRuntime {
     }
 
     // ================================================================
-    // PHASE 2: User approved → generate detailed plan → start execution
+    // PHASE 2: User approved → generate detailed plan → pause for canvas
     // ================================================================
     async approvePlan() {
         if (this.status !== 'awaiting_approval') {
@@ -110,8 +110,8 @@ class AgentRuntime {
         this.log('info', 'Plan approved — generating detailed build steps...');
         this.status = 'executing';
 
-        // Generate the detailed plan in background, then execute
-        this._buildDetailedPlanAndExecute().catch(e => {
+        // Generate the detailed plan, then pause for canvas layout editing
+        this._buildDetailedPlan().catch(e => {
             this.status = 'error';
             this.error = e.message;
             this.log('error', `Execution failed: ${e.message}`);
@@ -120,7 +120,122 @@ class AgentRuntime {
         return { status: 'executing' };
     }
 
-    async _buildDetailedPlanAndExecute() {
+    // ================================================================
+    // User updated positions from the canvas preview
+    // ================================================================
+    updatePositions(newPositionsArray) {
+        if (!this.currentPlan || !this.currentPlan.steps) return;
+
+        newPositionsArray.forEach(updated => {
+            const step = this.currentPlan.steps.find(s => s.id === updated.id);
+            if (step && updated.position) {
+                step.position = updated.position;
+                // For create_part steps, position lives in properties.Position
+                if (step.properties && step.properties.Position) {
+                    step.properties.Position = updated.position;
+                }
+            }
+        });
+        this.memory.setPlan(this.currentPlan);
+        this.log('info', 'Canvas positions updated — using user-edited layout');
+    }
+
+    // ================================================================
+    // User confirmed the canvas layout → start deterministic execution
+    // ================================================================
+    async confirmLayout() {
+        if (this.status !== 'awaiting_layout') {
+            throw new Error(`Cannot confirm layout in status: ${this.status}`);
+        }
+
+        this.log('info', 'Layout confirmed — starting build execution...');
+        this.status = 'executing';
+
+        this._spatialMap = [];
+
+        this._executeAfterLayout().catch(e => {
+            this.status = 'error';
+            this.error = e.message;
+            this.log('error', `Execution failed: ${e.message}`);
+        });
+
+        return { status: 'executing' };
+    }
+
+    // ================================================================
+    // Reposition Agent — LLM optimizes layout positions on canvas
+    // Status stays in awaiting_layout so user can further customize after
+    // ================================================================
+    async repositionLayout() {
+        if (this.status !== 'awaiting_layout') {
+            throw new Error(`Cannot reposition in status: ${this.status}`);
+        }
+        if (!this.currentPlan?.steps || this.currentPlan.steps.length === 0) {
+            throw new Error('No steps to reposition');
+        }
+
+        this.log('info', 'Reposition agent started — LLM is optimizing layout...');
+
+        try {
+            const spatialContext = this._generateSpatialContext();
+
+            // Build a compact description of all steps for the LLM
+            const stepsData = this.currentPlan.steps.map(step => {
+                const pos = step.position || (step.properties && step.properties.Position) || null;
+                const size = step.size || (step.properties && step.properties.Size) || null;
+                const entry = { id: step.id, action: step.action, name: step.name || '' };
+                if (pos) entry.position = pos;
+                if (size) entry.size = size;
+                if (step.searchQuery) entry.searchQuery = step.searchQuery;
+                if (step.className) entry.className = step.className;
+                return entry;
+            });
+
+            const prompt = REPOSITION_PROMPT
+                .replace('{{SPATIAL_CONTEXT}}', spatialContext)
+                .replace('{{STEPS_DATA}}', JSON.stringify(stepsData, null, 2));
+
+            const messages = [
+                { role: 'system', content: prompt },
+                { role: 'user', content: 'Reposition all placeable assets for the best spatial layout. Return the updated positions.' }
+            ];
+
+            const response = await this.llm.chat(this.modelId, messages, { apiKeys: this.apiKeys });
+            this.memory.trackTokens(response.usage.inputTokens, response.usage.outputTokens);
+
+            const jsonStr = this._extractJsonFromResponse(response.content);
+            const result = JSON.parse(jsonStr);
+
+            if (!result.steps || !Array.isArray(result.steps)) {
+                throw new Error('LLM returned invalid reposition data');
+            }
+
+            // Apply the new positions
+            let repositioned = 0;
+            for (const updated of result.steps) {
+                const step = this.currentPlan.steps.find(s => s.id === updated.id);
+                if (!step || !updated.position) continue;
+
+                // Update top-level position
+                step.position = updated.position;
+                // Update properties.Position for create_part steps
+                if (step.properties && step.properties.Position) {
+                    step.properties.Position = updated.position;
+                }
+                repositioned++;
+            }
+
+            this.memory.setPlan(this.currentPlan);
+            this.log('info', `Reposition agent done — ${repositioned} assets repositioned. You can now further adjust or confirm.`);
+
+            return { success: true, repositioned, steps: this.currentPlan.steps };
+        } catch (e) {
+            this.log('error', `Reposition agent failed: ${e.message}`);
+            throw e;
+        }
+    }
+
+    async _buildDetailedPlan() {
         try {
             // Get fresh explorer state
             const analyzer = new CodeAnalyzer(stateManager);
@@ -160,8 +275,20 @@ class AgentRuntime {
             // Pre-resolve all insert_model steps — convert searchQuery to assetId
             await this._preResolveAssets();
 
-            // Initialize spatial map for tracking placed objects
-            this._spatialMap = [];
+            // Pause for canvas layout preview
+            this.status = 'awaiting_layout';
+            this.log('info', 'Layout preview ready — waiting for user to confirm positions on canvas.');
+        } catch (e) {
+            this.status = 'error';
+            this.error = e.message;
+            this.log('error', `Detailed planning failed: ${e.message}`);
+        }
+    }
+
+    async _executeAfterLayout() {
+        try {
+            // Auto-create baseplate if steps are outside existing ground coverage
+            await this._ensureGroundCoverage();
 
             // Now execute deterministically
             await this._executeLoop();
@@ -173,8 +300,98 @@ class AgentRuntime {
         } catch (e) {
             this.status = 'error';
             this.error = e.message;
-            this.log('error', `Detailed planning failed: ${e.message}`);
+            this.log('error', `Execution failed: ${e.message}`);
         }
+    }
+
+    // ----------------------------------------------------------------
+    // Auto-detect if plan needs a baseplate/ground that doesn't exist
+    // Checks if steps have positions outside existing ground coverage
+    // ----------------------------------------------------------------
+    async _ensureGroundCoverage() {
+        const plan = this.currentPlan;
+        if (!plan?.steps) return;
+
+        // Collect all step positions
+        const allPositions = [];
+        for (const step of plan.steps) {
+            const pos = step.position || (step.properties && step.properties.Position);
+            if (pos && pos.length >= 3) {
+                allPositions.push(pos);
+            }
+        }
+        if (allPositions.length === 0) return;
+
+        // Find bounding box of planned assets
+        let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+        for (const pos of allPositions) {
+            minX = Math.min(minX, pos[0]);
+            maxX = Math.max(maxX, pos[0]);
+            minZ = Math.min(minZ, pos[2]);
+            maxZ = Math.max(maxZ, pos[2]);
+        }
+
+        // Check if the plan already includes a ground/baseplate create_part step
+        const hasGroundStep = plan.steps.some(step => {
+            if (step.action !== 'create_part') return false;
+            const nameL = (step.name || '').toLowerCase();
+            const size = (step.properties && step.properties.Size) || step.size;
+            const isLargeFlat = size && size[0] >= 100 && size[2] >= 100 && size[1] <= 2;
+            return isLargeFlat || nameL.includes('ground') || nameL.includes('baseplate') || nameL.includes('terrain');
+        });
+
+        if (hasGroundStep) return; // Plan already creates its own ground
+
+        // Check existing workspace for ground coverage
+        const projectState = stateManager.projectState;
+        const worldInfo = placementEngine.getWorldInfo(projectState);
+        const bounds = worldInfo.bounds;
+
+        // Check if planned positions fall outside existing baseplate bounds (with 20-stud margin)
+        const margin = 20;
+        const outsideBounds = minX < (bounds.minX + margin) || maxX > (bounds.maxX - margin) ||
+                              minZ < (bounds.minZ + margin) || maxZ > (bounds.maxZ - margin);
+
+        // Also check if there's NO baseplate at all (empty workspace or no ground-like objects)
+        const workspace = projectState?.Workspace || {};
+        const hasExistingGround = Object.keys(workspace).some(key => {
+            const keyL = key.toLowerCase();
+            return keyL.includes('ground') || keyL.includes('baseplate') || keyL.includes('terrain');
+        });
+
+        if (!outsideBounds && hasExistingGround) return; // Everything fits within existing ground
+
+        // Calculate needed size to cover all planned positions with padding
+        const padded = 60; // extra padding around planned area
+        const centerX = Math.round((minX + maxX) / 2);
+        const centerZ = Math.round((minZ + maxZ) / 2);
+        const sizeX = Math.max(512, Math.round(maxX - minX + padded * 2));
+        const sizeZ = Math.max(512, Math.round(maxZ - minZ + padded * 2));
+
+        this.log('info', `Auto-creating ground: planned assets span X:[${Math.round(minX)}, ${Math.round(maxX)}] Z:[${Math.round(minZ)}, ${Math.round(maxZ)}]`);
+
+        // Prepend a ground/baseplate step at the beginning of the plan
+        const groundStep = {
+            id: 0, // Will be first
+            action: 'create_part',
+            name: `Ground_Auto_${Date.now()}`,
+            className: 'Part',
+            parent: 'Workspace',
+            properties: {
+                Size: [sizeX, 1, sizeZ],
+                Position: [centerX, 0, centerZ],
+                Anchored: true,
+                Material: 'Grass',
+                Color: [76, 153, 0]
+            }
+        };
+
+        plan.steps.unshift(groundStep);
+        // Re-index step IDs
+        plan.steps.forEach((step, idx) => { step.id = idx + 1; });
+        this.memory.setPlan(plan);
+
+        this.log('info', `Auto-added ground (${sizeX}×${sizeZ}) at [${centerX}, 0, ${centerZ}] to cover build area.`);
     }
 
     // ----------------------------------------------------------------
@@ -287,6 +504,9 @@ class AgentRuntime {
                         break;
                     case 'delete_instance':
                         success = await this._executeDeleteInstance(step, stepNum);
+                        break;
+                    case 'set_properties':
+                        success = await this._executeSetProperties(step, stepNum);
                         break;
                     default:
                         this.log('warning', `Step ${stepNum}: Unknown action "${step.action}", skipping.`);
@@ -469,6 +689,44 @@ class AgentRuntime {
         const actualSize = modelBounds?.size || [8, 8, 8];
         const actualPos = modelBounds?.position || [0, 0, 0];
         this.log('info', `Model "${modelName}" actual size: [${actualSize.join(', ')}], current pos: [${actualPos.map(n => n.toFixed(1)).join(', ')}]`);
+
+        // Log any cleanup performed by the plugin
+        let needsRebounds = false;
+        if (resultStr.includes('|TERRAIN_STRIPPED:')) {
+            const strippedMatch = resultStr.match(/\|TERRAIN_STRIPPED:(\d+)/);
+            if (strippedMatch) {
+                this.log('info', `Plugin stripped ${strippedMatch[1]} embedded terrain parts from "${modelName}"`);
+                needsRebounds = true;
+            }
+        }
+        if (resultStr.includes('|SCALED:')) {
+            const scaledMatch = resultStr.match(/\|SCALED:([\d.]+)/);
+            if (scaledMatch) {
+                this.log('info', `Plugin scaled "${modelName}" down by factor ${scaledMatch[1]} to fit max size`);
+                needsRebounds = true;
+            }
+        }
+
+        // Re-fetch bounds after terrain stripping or scaling
+        if (needsRebounds) {
+            await this._refreshState();
+            const reBoundsCmd = commandQueue.enqueue(this.id, 'get_bounds', {
+                path: `Workspace.${modelName}`
+            });
+            await this._waitForCommands([reBoundsCmd.id], 10000);
+            const reBoundsResult = commandQueue.commands.get(reBoundsCmd.id);
+            if (reBoundsResult.status === 'completed' && reBoundsResult.result) {
+                try {
+                    const newBounds = JSON.parse(reBoundsResult.result);
+                    if (newBounds?.size) {
+                        actualSize[0] = newBounds.size[0];
+                        actualSize[1] = newBounds.size[1];
+                        actualSize[2] = newBounds.size[2];
+                        this.log('info', `Post-cleanup size: [${actualSize.join(', ')}]`);
+                    }
+                } catch (e) { /* ignore parse errors */ }
+            }
+        }
 
         // --- PHASE 3: Compute correct position using math ---
         const worldInfo = placementEngine.getWorldInfo(stateManager.projectState);
@@ -720,6 +978,43 @@ class AgentRuntime {
         const result = commandQueue.commands.get(enqueued.id);
         if (result.status === 'failed') {
             this.log('error', `Delete failed: ${result.error}`);
+            return false;
+        }
+
+        await this._refreshState();
+        return true;
+    }
+
+    // ----------------------------------------------------------------
+    // Execute a set_properties step: modify an existing instance's properties
+    // Used primarily in fix/repair mode to reposition or resize objects
+    // ----------------------------------------------------------------
+    async _executeSetProperties(step, stepNum) {
+        if (!step.path) {
+            this.log('error', `Step ${stepNum}: set_properties has no path`);
+            return false;
+        }
+        if (!step.properties || typeof step.properties !== 'object') {
+            this.log('error', `Step ${stepNum}: set_properties has no properties`);
+            return false;
+        }
+
+        const cmd = {
+            type: 'set_properties',
+            payload: {
+                path: step.path,
+                properties: step.properties
+            }
+        };
+
+        this.log('info', `Setting properties on "${step.path}": ${JSON.stringify(step.properties)}`);
+
+        const enqueued = commandQueue.enqueue(this.id, cmd.type, cmd.payload);
+        await this._waitForCommands([enqueued.id]);
+
+        const result = commandQueue.commands.get(enqueued.id);
+        if (result.status === 'failed') {
+            this.log('error', `Set properties failed: ${result.error}`);
             return false;
         }
 
@@ -1081,7 +1376,7 @@ class AgentRuntime {
     getStatus() {
         const totalSteps = this.currentPlan?.steps?.length || 0;
         const completedSteps = totalSteps > 0 ? Math.min(this._currentStepIndex, totalSteps) : 0;
-        return {
+        const result = {
             id: this.id,
             status: this.status,
             model: this.modelId,
@@ -1098,6 +1393,11 @@ class AgentRuntime {
             error: this.error,
             tokensUsed: this.memory.metadata.totalTokensUsed
         };
+        // Expose detailed steps when awaiting layout so frontend can render canvas
+        if (this.status === 'awaiting_layout' && this.currentPlan?.steps) {
+            result.plan.steps = this.currentPlan.steps;
+        }
+        return result;
     }
 
     getActivity(limit = 50) {

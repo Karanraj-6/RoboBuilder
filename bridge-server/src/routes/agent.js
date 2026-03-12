@@ -84,6 +84,44 @@ router.post('/agents/:id/plan/approve', async (req, res) => {
     }
 });
 
+// Update step positions from canvas preview
+router.post('/agents/:id/plan/update-positions', (req, res) => {
+    const agent = resolveAgent(req.params.id);
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+    const { positions } = req.body;
+    if (!Array.isArray(positions)) return res.status(400).json({ error: 'Missing positions array' });
+
+    agent.updatePositions(positions);
+    res.json({ success: true });
+});
+
+// Confirm canvas layout → start execution
+router.post('/agents/:id/plan/confirm-layout', async (req, res) => {
+    const agent = resolveAgent(req.params.id);
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+    try {
+        const result = await agent.confirmLayout();
+        res.json(result);
+    } catch (e) {
+        res.status(400).json({ error: e.message });
+    }
+});
+
+// Reposition agent — LLM optimizes layout positions
+router.post('/agents/:id/plan/reposition', async (req, res) => {
+    const agent = resolveAgent(req.params.id);
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+    try {
+        const result = await agent.repositionLayout();
+        res.json(result);
+    } catch (e) {
+        res.status(400).json({ error: e.message });
+    }
+});
+
 // Get agent activity log
 router.get('/agents/:id/activity', (req, res) => {
     const agent = resolveAgent(req.params.id);

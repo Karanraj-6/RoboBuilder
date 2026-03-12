@@ -363,6 +363,147 @@ local function setProperties(instance, properties)
 end
 
 ----------------------------------------------------------------------
+-- MODEL CLEANUP: Strip embedded terrain & normalize scale
+----------------------------------------------------------------------
+
+-- Remove terrain-like children from Toolbox models (large flat grass/ground parts)
+local function cleanupModelTerrain(instance)
+  if not instance then return 0 end
+  local removed = 0
+  local terrainMaterials = {
+    [Enum.Material.Grass] = true,
+    [Enum.Material.Ground] = true,
+    [Enum.Material.Sand] = true,
+    [Enum.Material.LeafyGrass] = true,
+    [Enum.Material.Mud] = true,
+    [Enum.Material.Snow] = true,
+  }
+
+  -- Collect parts to remove first (avoid modifying while iterating)
+  local toRemove = {}
+  local descendants = instance:GetDescendants()
+  local totalParts = 0
+  for _, desc in ipairs(descendants) do
+    if desc:IsA("BasePart") then
+      totalParts = totalParts + 1
+    end
+  end
+
+  for _, desc in ipairs(descendants) do
+    if desc:IsA("BasePart") then
+      local sz = desc.Size
+      local isFlat = sz.Y <= 3
+      local isLarge = sz.X >= 40 or sz.Z >= 40
+      local isTerrain = terrainMaterials[desc.Material] or false
+
+      -- Also check by name
+      local nameL = string.lower(desc.Name)
+      local isNamedTerrain = string.find(nameL, "terrain") or string.find(nameL, "ground")
+          or string.find(nameL, "grass") or string.find(nameL, "baseplate")
+          or string.find(nameL, "floor") or string.find(nameL, "base")
+
+      if isFlat and isLarge and (isTerrain or isNamedTerrain) then
+        -- Don't remove ALL parts — keep at least the structural ones
+        -- Only remove if this looks like embedded terrain (not a building floor)
+        if totalParts > 1 then
+          table.insert(toRemove, desc)
+        end
+      end
+    end
+  end
+
+  for _, part in ipairs(toRemove) do
+    pcall(function()
+      part:Destroy()
+      removed = removed + 1
+    end)
+  end
+
+  return removed
+end
+
+-- Scale down a model if it exceeds maxDimension in any axis
+local function normalizeModelScale(instance, maxDimension)
+  if not instance then return false, 1 end
+  maxDimension = maxDimension or 120
+
+  local sz
+  if instance:IsA("Model") then
+    local ok, cf, bsz = pcall(function()
+      return instance:GetBoundingBox()
+    end)
+    -- pcall with multiple returns: ok, cf_or_err, bsz
+    -- Actually pcall returns: ok, result1, result2...
+    -- For GetBoundingBox which returns 2 values:
+    if ok and cf then
+      -- cf is actually the CFrame, bsz is the size Vector3
+      -- But pcall flattens returns: ok, val1, val2
+      sz = bsz
+    end
+    if not sz then
+      -- Fallback: compute from descendants
+      local minV = Vector3.new(math.huge, math.huge, math.huge)
+      local maxV = Vector3.new(-math.huge, -math.huge, -math.huge)
+      for _, desc in ipairs(instance:GetDescendants()) do
+        if desc:IsA("BasePart") then
+          local p = desc.Position
+          local hs = desc.Size / 2
+          minV = Vector3.new(math.min(minV.X, p.X - hs.X), math.min(minV.Y, p.Y - hs.Y), math.min(minV.Z, p.Z - hs.Z))
+          maxV = Vector3.new(math.max(maxV.X, p.X + hs.X), math.max(maxV.Y, p.Y + hs.Y), math.max(maxV.Z, p.Z + hs.Z))
+        end
+      end
+      if minV.X < math.huge then
+        sz = maxV - minV
+      end
+    end
+  elseif instance:IsA("BasePart") then
+    sz = instance.Size
+  end
+
+  if not sz then return false, 1 end
+
+  local maxAxis = math.max(sz.X, sz.Y, sz.Z)
+  if maxAxis <= maxDimension then return false, 1 end
+
+  local scaleFactor = maxDimension / maxAxis
+
+  -- Try built-in ScaleTo first (available on Models with Scale support)
+  if instance:IsA("Model") then
+    local scaleOk = pcall(function()
+      local currentScale = instance:GetScale()
+      instance:ScaleTo(currentScale * scaleFactor)
+    end)
+    if scaleOk then return true, scaleFactor end
+
+    -- Fallback: manually scale each BasePart relative to the model pivot
+    local pivotOk, pivot = pcall(function() return instance:GetPivot() end)
+    if pivotOk and pivot then
+      local pivotPos = pivot.Position
+      for _, part in ipairs(instance:GetDescendants()) do
+        if part:IsA("BasePart") then
+          pcall(function()
+            -- Scale size
+            part.Size = part.Size * scaleFactor
+            -- Scale position relative to pivot
+            local relPos = part.CFrame.Position - pivotPos
+            local newPos = pivotPos + relPos * scaleFactor
+            part.CFrame = CFrame.new(newPos) * (part.CFrame - part.CFrame.Position)
+          end)
+        end
+      end
+      return true, scaleFactor
+    end
+  elseif instance:IsA("BasePart") then
+    pcall(function()
+      instance.Size = instance.Size * scaleFactor
+    end)
+    return true, scaleFactor
+  end
+
+  return false, 1
+end
+
+----------------------------------------------------------------------
 -- COMMAND HANDLERS
 ----------------------------------------------------------------------
 
@@ -453,6 +594,29 @@ commandHandlers.insert_free_model = function(payload)
     insertedName = mainItem.Name
   end
 
+  -- CLEANUP: Strip embedded terrain from Toolbox models
+  local terrainRemoved = 0
+  if mainItem then
+    terrainRemoved = cleanupModelTerrain(mainItem)
+  end
+
+  -- SCALE: Normalize oversized models (max 120 studs in any dimension)
+  local maxDim = (payload.maxDimension and type(payload.maxDimension) == "number") and payload.maxDimension or 120
+  local wasScaled, scaleFactor = false, 1
+  if mainItem then
+    wasScaled, scaleFactor = normalizeModelScale(mainItem, maxDim)
+  end
+
+  -- Re-anchor all parts after cleanup
+  if terrainRemoved > 0 or wasScaled then
+    pcall(function()
+      if mainItem:IsA("BasePart") then mainItem.Anchored = true end
+      for _, desc in ipairs(mainItem:GetDescendants()) do
+        if desc:IsA("BasePart") then desc.Anchored = true end
+      end
+    end)
+  end
+
   -- Position the model immediately if position is provided
   if mainItem and payload.position and type(payload.position) == "table" and #payload.position == 3 then
     local pos = payload.position
@@ -499,7 +663,16 @@ commandHandlers.insert_free_model = function(payload)
     end
   end)
 
-  return true, "Inserted '" .. insertedName .. "' (Asset ID: " .. tostring(assetId) .. ") at " .. tostring(parent) .. ". Instance name: " .. insertedName .. boundsInfo
+  -- Build cleanup info string
+  local cleanupInfo = ""
+  if terrainRemoved > 0 then
+    cleanupInfo = cleanupInfo .. "|TERRAIN_STRIPPED:" .. terrainRemoved
+  end
+  if wasScaled then
+    cleanupInfo = cleanupInfo .. string.format("|SCALED:%.3f", scaleFactor)
+  end
+
+  return true, "Inserted '" .. insertedName .. "' (Asset ID: " .. tostring(assetId) .. ") at " .. tostring(parent) .. ". Instance name: " .. insertedName .. boundsInfo .. cleanupInfo
 end
 
 -- Get bounds of an existing instance (Model or BasePart)
@@ -594,6 +767,70 @@ commandHandlers.move_instance = function(payload)
 
   return true, "Moved " .. tostring(payload.path) .. " to [" .. pos[1] .. "," .. pos[2] .. "," .. pos[3] .. "] " .. boundsStr
 end
+
+  -- Scale an instance (Model or BasePart) by a factor
+  commandHandlers.scale_instance = function(payload)
+    local instance = resolvePath(payload.path)
+    if not instance then
+      return false, "Instance not found: " .. tostring(payload.path)
+    end
+
+    local factor = tonumber(payload.factor)
+    if not factor or factor <= 0 then
+      return false, "Invalid scale factor: must be > 0"
+    end
+
+    local scaled = false
+
+    if instance:IsA("Model") then
+      scaled = pcall(function()
+        local currentScale = instance:GetScale()
+        instance:ScaleTo(currentScale * factor)
+      end)
+
+      if not scaled then
+        local pivotOk, pivot = pcall(function() return instance:GetPivot() end)
+        if pivotOk and pivot then
+          local pivotPos = pivot.Position
+          scaled = pcall(function()
+            for _, part in ipairs(instance:GetDescendants()) do
+              if part:IsA("BasePart") then
+                part.Size = part.Size * factor
+                local relPos = part.CFrame.Position - pivotPos
+                local newPos = pivotPos + relPos * factor
+                part.CFrame = CFrame.new(newPos) * (part.CFrame - part.CFrame.Position)
+              end
+            end
+          end)
+        end
+      end
+    elseif instance:IsA("BasePart") then
+      scaled = pcall(function()
+        instance.Size = instance.Size * factor
+      end)
+    else
+      return false, "Cannot scale instance of class: " .. instance.ClassName
+    end
+
+    if not scaled then
+      return false, "Failed to scale " .. tostring(payload.path)
+    end
+
+    local boundsStr = ""
+    pcall(function()
+      if instance:IsA("Model") then
+        local cf, sz = instance:GetBoundingBox()
+        boundsStr = string.format('{"position":[%.1f,%.1f,%.1f],"size":[%.1f,%.1f,%.1f]}',
+          cf.Position.X, cf.Position.Y, cf.Position.Z, sz.X, sz.Y, sz.Z)
+      elseif instance:IsA("BasePart") then
+        boundsStr = string.format('{"position":[%.1f,%.1f,%.1f],"size":[%.1f,%.1f,%.1f]}',
+          instance.Position.X, instance.Position.Y, instance.Position.Z,
+          instance.Size.X, instance.Size.Y, instance.Size.Z)
+      end
+    end)
+
+    return true, "Scaled " .. tostring(payload.path) .. " by factor " .. tostring(factor) .. " " .. boundsStr
+  end
 
 -- Set properties on existing instance
 commandHandlers.set_properties = function(payload)
