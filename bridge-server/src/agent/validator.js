@@ -5,7 +5,7 @@
 const VALID_COMMAND_TYPES = [
     'create_instance', 'set_properties', 'delete_instance',
     'insert_script', 'patch_script', 'update_script',
-    'create_ui', 'move_instance', 'clone_instance',
+    'create_ui', 'move_instance', 'reparent_instance', 'clone_instance', 'get_bounds',
     'generate_asset', 'import_user_asset', 'export_state',
     'snapshot', 'rollback', 'batch', 'insert_free_model', 'fetch_explorer_state', 'search_catalog'
 ];
@@ -126,7 +126,12 @@ class Validator {
 
                 case 'move_instance':
                     if (!command.payload.path) errors.push('move_instance requires path');
-                    if (!command.payload.newParent) errors.push('move_instance requires newParent');
+                    if (!command.payload.position) errors.push('move_instance requires position');
+                    break;
+
+                case 'reparent_instance':
+                    if (!command.payload.path) errors.push('reparent_instance requires path');
+                    if (!command.payload.newParent) errors.push('reparent_instance requires newParent');
                     break;
 
                 case 'clone_instance':

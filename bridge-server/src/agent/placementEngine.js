@@ -5,31 +5,6 @@
  */
 
 class PlacementEngine {
-    _collectSpatialNodes(node, currentPath = '', out = []) {
-        if (!node || typeof node !== 'object') return out;
-
-        const props = node._properties || {};
-        const pos = Array.isArray(props.Position) && props.Position.length === 3 ? props.Position : null;
-        const size = Array.isArray(props.Size) && props.Size.length === 3 ? props.Size : null;
-
-        if (pos) {
-            out.push({
-                path: currentPath,
-                className: node._class || 'Unknown',
-                position: pos,
-                size: size || [8, 8, 8]
-            });
-        }
-
-        for (const [key, value] of Object.entries(node)) {
-            if (key.startsWith('_')) continue;
-            const nextPath = currentPath ? `${currentPath}.${key}` : key;
-            this._collectSpatialNodes(value, nextPath, out);
-        }
-
-        return out;
-    }
-
     _inferMinDistance(stepDescription) {
         const text = (stepDescription || '').toLowerCase();
         if (text.includes('building') || text.includes('city') || text.includes('skyscraper')) return 70;
@@ -201,6 +176,306 @@ class PlacementEngine {
                 ...(occupiedPreview.length > 0 ? occupiedPreview : ['- Workspace appears mostly empty.']),
                 '- Decide final asset placement from ACTUAL Explorer state. Do not assume fixed paths or names.'
             ].join('\n')
+        };
+    }
+
+    // ================================================================
+    // PUBLIC: Collect all occupied objects from project state
+    // Returns array of { path, className, position: [X,Y,Z], size: [W,H,D] }
+    // ================================================================
+    collectAllOccupied(projectState) {
+        const workspace = projectState?.Workspace || {};
+        return this._collectSpatialNodes(workspace, 'Workspace', []);
+    }
+
+    // Also collect Models with PivotPosition + BoundingSize
+    _collectSpatialNodes(node, currentPath = '', out = []) {
+        if (!node || typeof node !== 'object') return out;
+
+        const props = node._properties || {};
+
+        // BasePart: has Position + Size
+        const pos = Array.isArray(props.Position) && props.Position.length === 3 ? props.Position : null;
+        const size = Array.isArray(props.Size) && props.Size.length === 3 ? props.Size : null;
+
+        // Model: has PivotPosition + BoundingSize
+        const pivotPos = Array.isArray(props.PivotPosition) && props.PivotPosition.length === 3 ? props.PivotPosition : null;
+        const boundSize = Array.isArray(props.BoundingSize) && props.BoundingSize.length === 3 ? props.BoundingSize : null;
+
+        if (pos) {
+            out.push({
+                path: currentPath,
+                className: node._class || 'Unknown',
+                name: node._name || currentPath.split('.').pop(),
+                position: pos,
+                size: size || [8, 8, 8]
+            });
+        } else if (pivotPos) {
+            out.push({
+                path: currentPath,
+                className: node._class || 'Unknown',
+                name: node._name || currentPath.split('.').pop(),
+                position: pivotPos,
+                size: boundSize || [8, 8, 8]
+            });
+        }
+
+        for (const [key, value] of Object.entries(node)) {
+            if (key.startsWith('_')) continue;
+            const nextPath = currentPath ? `${currentPath}.${key}` : key;
+            this._collectSpatialNodes(value, nextPath, out);
+        }
+
+        return out;
+    }
+
+    // ================================================================
+    // PUBLIC: Check if a box at (pos, size) overlaps any occupied object
+    // Excludes ground/terrain/roads from collision (they're flat surfaces everything sits on)
+    // Returns { overlaps: boolean, overlappingWith: [...] }
+    // ================================================================
+    checkCollision(pos, size, occupied) {
+        const halfW = size[0] / 2;
+        const halfH = size[1] / 2;
+        const halfD = size[2] / 2;
+
+        const minX = pos[0] - halfW;
+        const maxX = pos[0] + halfW;
+        const minY = pos[1] - halfH;
+        const maxY = pos[1] + halfH;
+        const minZ = pos[2] - halfD;
+        const maxZ = pos[2] + halfD;
+
+        const overlapping = [];
+
+        for (const obj of occupied) {
+            // Skip ground-like objects (large flat surfaces)
+            const oSize = obj.size || [8, 8, 8];
+            const oName = (obj.name || obj.path || '').toLowerCase();
+            const isFlat = oSize[1] <= 2;
+            const isWide = oSize[0] >= 80 || oSize[2] >= 80;
+            const isGroundLike = isFlat && isWide;
+            const isNamedGround = oName.includes('ground') || oName.includes('baseplate') || 
+                                   oName.includes('terrain') || oName.includes('road') || 
+                                   oName.includes('street') || oName.includes('sidewalk') ||
+                                   oName.includes('path') || oName.includes('floor');
+            if (isGroundLike || isNamedGround) continue;
+
+            const oPos = obj.position;
+            const oHalfW = oSize[0] / 2;
+            const oHalfH = oSize[1] / 2;
+            const oHalfD = oSize[2] / 2;
+
+            const oMinX = oPos[0] - oHalfW;
+            const oMaxX = oPos[0] + oHalfW;
+            const oMinY = oPos[1] - oHalfH;
+            const oMaxY = oPos[1] + oHalfH;
+            const oMinZ = oPos[2] - oHalfD;
+            const oMaxZ = oPos[2] + oHalfD;
+
+            // AABB overlap test with padding (8 studs breathing room)
+            const pad = 8;
+            if (minX - pad < oMaxX && maxX + pad > oMinX &&
+                minY - pad < oMaxY && maxY + pad > oMinY &&
+                minZ - pad < oMaxZ && maxZ + pad > oMinZ) {
+                overlapping.push(obj);
+            }
+        }
+
+        return { overlaps: overlapping.length > 0, overlappingWith: overlapping };
+    }
+
+    // ================================================================
+    // PUBLIC: Compute a collision-free placement for an object
+    // 
+    // modelSize: [W, H, D] — actual bounding size of the model
+    // intendedPos: [X, Y, Z] — LLM's suggested position (hint)
+    // occupied: array from collectAllOccupied()
+    // groundY: top surface of ground
+    // bounds: { minX, maxX, minZ, maxZ }
+    //
+    // Returns: { position: [X, Y, Z], adjusted: boolean, reason: string }
+    // ================================================================
+    computePlacement(modelSize, intendedPos, occupied, groundY, bounds) {
+        const w = modelSize[0] || 8;
+        const h = modelSize[1] || 8;
+        const d = modelSize[2] || 8;
+
+        // First: correct the Y so model sits ON the ground
+        const correctY = groundY + (h / 2);
+
+        // Start with intended position, Y-corrected
+        let bestPos = [
+            intendedPos[0] || 0,
+            correctY,
+            intendedPos[2] || 0
+        ];
+
+        // Clamp to world bounds
+        const bnd = bounds || { minX: -240, maxX: 240, minZ: -240, maxZ: 240 };
+        bestPos[0] = Math.max(bnd.minX + w / 2, Math.min(bnd.maxX - w / 2, bestPos[0]));
+        bestPos[2] = Math.max(bnd.minZ + d / 2, Math.min(bnd.maxZ - d / 2, bestPos[2]));
+
+        // Check for collision at intended position
+        const collision = this.checkCollision(bestPos, [w, h, d], occupied);
+        if (!collision.overlaps) {
+            return { position: bestPos, adjusted: false, reason: 'No collision at intended position' };
+        }
+
+        // Collision detected — try to find a free spot nearby
+        // Strategy: spiral outward from intended position in XZ plane
+        const stepSize = Math.max(w, d) + 20; // Move at least one object-width + generous gap
+        const maxRings = 10; // More rings = larger search area (up to ~10x object size away)
+
+        for (let ring = 1; ring <= maxRings; ring++) {
+            const dist = ring * stepSize;
+            for (let angle = 0; angle < 360; angle += 45) { // 8 directions per ring = 80 positions total
+                const rad = (angle * Math.PI) / 180;
+                const testPos = [
+                    bestPos[0] + dist * Math.cos(rad),
+                    correctY,
+                    bestPos[2] + dist * Math.sin(rad)
+                ];
+
+                // Clamp to bounds
+                testPos[0] = Math.max(bnd.minX + w / 2, Math.min(bnd.maxX - w / 2, testPos[0]));
+                testPos[2] = Math.max(bnd.minZ + d / 2, Math.min(bnd.maxZ - d / 2, testPos[2]));
+
+                const testCollision = this.checkCollision(testPos, [w, h, d], occupied);
+                if (!testCollision.overlaps) {
+                    return {
+                        position: [Math.round(testPos[0]), Math.round(testPos[1] * 10) / 10, Math.round(testPos[2])],
+                        adjusted: true,
+                        reason: `Moved ${Math.round(dist)} studs from intended to avoid collision with ${collision.overlappingWith.map(o => o.name || o.path).join(', ')}`
+                    };
+                }
+            }
+        }
+
+        // Last resort: find ANY free slot in the world
+        const gridStep = Math.max(w, d) + 15;
+        for (let x = bnd.minX + w; x < bnd.maxX - w; x += gridStep) {
+            for (let z = bnd.minZ + d; z < bnd.maxZ - d; z += gridStep) {
+                const testPos = [x, correctY, z];
+                const testCollision = this.checkCollision(testPos, [w, h, d], occupied);
+                if (!testCollision.overlaps) {
+                    return {
+                        position: [Math.round(x), Math.round(correctY * 10) / 10, Math.round(z)],
+                        adjusted: true,
+                        reason: `Fallback grid placement — could not fit near intended position`
+                    };
+                }
+            }
+        }
+
+        // Absolute last resort — just use the intended position Y-corrected
+        return {
+            position: [Math.round(bestPos[0]), Math.round(correctY * 10) / 10, Math.round(bestPos[2])],
+            adjusted: true,
+            reason: 'Could not find collision-free spot, using Y-corrected intended position'
+        };
+    }
+
+    // ================================================================
+    // PUBLIC: Get ground Y and world bounds from current state
+    // ================================================================
+    getWorldInfo(projectState) {
+        const workspace = projectState?.Workspace || {};
+        const occupied = this._collectSpatialNodes(workspace, 'Workspace', []);
+        const baseplateBounds = this._getBaseplateBounds(workspace);
+        const bounds = this._adaptiveBounds(occupied, baseplateBounds);
+        const groundY = this._estimateGroundY(workspace, occupied);
+        return { groundY, bounds, occupied };
+    }
+
+    // ================================================================
+    // PUBLIC: Analyze spatial coverage — find empty zones and object counts
+    // Returns { zones: [...], totalObjects, objectCounts, emptyZones, sparseZones, coverageReport }
+    // ================================================================
+    analyzeCoverage(projectState) {
+        const worldInfo = this.getWorldInfo(projectState);
+        const occupied = worldInfo.occupied;
+        const bounds = worldInfo.bounds;
+
+        // Filter out ground-like objects for counting
+        const placedObjects = occupied.filter(obj => {
+            const s = obj.size || [0, 0, 0];
+            const n = (obj.name || obj.path || '').toLowerCase();
+            const isFlat = s[1] <= 2 && (s[0] >= 80 || s[2] >= 80);
+            const isInfra = n.includes('ground') || n.includes('baseplate') || n.includes('terrain');
+            return !isFlat && !isInfra;
+        });
+
+        // Divide world into a grid of zones (4x4 = 16 zones)
+        const gridSize = 4;
+        const zoneW = (bounds.maxX - bounds.minX) / gridSize;
+        const zoneD = (bounds.maxZ - bounds.minZ) / gridSize;
+        const zones = [];
+
+        for (let gx = 0; gx < gridSize; gx++) {
+            for (let gz = 0; gz < gridSize; gz++) {
+                const zMinX = bounds.minX + gx * zoneW;
+                const zMaxX = zMinX + zoneW;
+                const zMinZ = bounds.minZ + gz * zoneD;
+                const zMaxZ = zMinZ + zoneD;
+                const centerX = Math.round((zMinX + zMaxX) / 2);
+                const centerZ = Math.round((zMinZ + zMaxZ) / 2);
+
+                const objectsInZone = placedObjects.filter(obj => {
+                    const p = obj.position;
+                    return p[0] >= zMinX && p[0] < zMaxX && p[2] >= zMinZ && p[2] < zMaxZ;
+                });
+
+                zones.push({
+                    label: `Zone_${gx}_${gz}`,
+                    bounds: { minX: Math.round(zMinX), maxX: Math.round(zMaxX), minZ: Math.round(zMinZ), maxZ: Math.round(zMaxZ) },
+                    center: [centerX, centerZ],
+                    objectCount: objectsInZone.length,
+                    objects: objectsInZone.map(o => o.name || o.path)
+                });
+            }
+        }
+
+        // Count by type (heuristic from names)
+        const objectCounts = { buildings: 0, vehicles: 0, trees: 0, lights: 0, props: 0, other: 0 };
+        for (const obj of placedObjects) {
+            const n = (obj.name || obj.path || '').toLowerCase();
+            if (n.includes('road') || n.includes('street') || n.includes('sidewalk')) continue;
+            if (n.includes('building') || n.includes('house') || n.includes('apart') || n.includes('office') || n.includes('shop') || n.includes('skyscraper') || n.includes('warehouse') || n.includes('factory') || n.includes('restaurant')) objectCounts.buildings++;
+            else if (n.includes('car') || n.includes('taxi') || n.includes('bus') || n.includes('truck') || n.includes('sedan') || n.includes('vehicle') || n.includes('police')) objectCounts.vehicles++;
+            else if (n.includes('tree') || n.includes('oak') || n.includes('pine') || n.includes('bush') || n.includes('plant')) objectCounts.trees++;
+            else if (n.includes('light') || n.includes('lamp')) objectCounts.lights++;
+            else if (n.includes('bench') || n.includes('hydrant') || n.includes('cone') || n.includes('dumpster') || n.includes('sign') || n.includes('fountain') || n.includes('trash')) objectCounts.props++;
+            else objectCounts.other++;
+        }
+
+        const emptyZones = zones.filter(z => z.objectCount === 0);
+        const sparseZones = zones.filter(z => z.objectCount > 0 && z.objectCount <= 2);
+
+        // Build human-readable coverage report
+        const zoneLines = zones.map(z =>
+            `  ${z.label}: ${z.objectCount} objects (center: [${z.center.join(', ')}], X: ${z.bounds.minX} to ${z.bounds.maxX}, Z: ${z.bounds.minZ} to ${z.bounds.maxZ})${z.objectCount === 0 ? ' ← EMPTY' : z.objectCount <= 2 ? ' ← SPARSE' : ''}`
+        );
+
+        const coverageReport = [
+            `COVERAGE ANALYSIS:`,
+            `Total placed objects (excluding ground/roads): ${placedObjects.length}`,
+            `Object counts: Buildings=${objectCounts.buildings}, Vehicles=${objectCounts.vehicles}, Trees=${objectCounts.trees}, Lights=${objectCounts.lights}, Props=${objectCounts.props}, Other=${objectCounts.other}`,
+            `Zones (${gridSize}x${gridSize} grid):`,
+            ...zoneLines,
+            `Empty zones: ${emptyZones.length}/${zones.length}`,
+            `Sparse zones (1-2 objects): ${sparseZones.length}/${zones.length}`
+        ].join('\n');
+
+        return {
+            zones,
+            totalObjects: placedObjects.length,
+            objectCounts,
+            emptyZones,
+            sparseZones,
+            coverageReport,
+            groundY: worldInfo.groundY,
+            bounds
         };
     }
 }

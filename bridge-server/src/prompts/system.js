@@ -172,27 +172,44 @@ The user approved this project summary:
    - Complex game (city, RPG, open world): 40-55 objects
    If you have fewer objects than appropriate for the request, ADD MORE. Fill empty zones, add more buildings along roads, scatter more props.
 
-=== PHASE 2: COORDINATE RULES ===
+=== PHASE 2: POSITION HINTS ===
 
-- Positions are [X, Y, Z] arrays. Y is UP, X is left/right, Z is forward/back.
-- Ground_Y = 0.5 (top of default baseplate). Object sits at Y = 0.5 + (height / 2).
-- NEVER place two objects at the same position.
-- Spacing: Buildings 60+ studs apart. Vehicles 30+. Trees 20+. Props 15+.
+The runtime has a SMART PLACEMENT ENGINE that handles exact positioning:
+- It reads the ACTUAL size of each inserted model
+- It checks for collisions with ALL existing objects
+- It computes the correct Y so objects sit ON the ground (not floating or underground)
+- It adjusts positions if there would be an overlap
+
+YOUR positions are HINTS — approximate intended locations. The engine will:
+- Use your position as a starting point
+- Fix the Y coordinate based on actual model height
+- Move models if they overlap with existing objects
+- Keep everything within world bounds
+
+So: provide APPROXIMATE positions that show your INTENT (which zone, which side of road).
+The engine handles the precision math. Don't stress about exact numbers.
+
+- Positions: [X, Y, Z] arrays. Y is UP, X is left/right, Z is forward/back.
+- Ground_Y ≈ 0.5. Just use Y=0.5 for ground-level objects — the engine auto-corrects.
 - Roads form a CONNECTED grid — not random isolated segments.
-- Buildings sit BESIDE roads (40+ studs from road center), NOT on top.
-- Vehicles sit ON roads.
-- Trees/nature go in parks, along sidewalks, in empty zones.
-- Street lights go along roads every 60-80 studs.
+- Buildings go BESIDE roads (40+ studs from road center), NOT on top.
+- Vehicles go ON roads.
+- Spread objects across zones — don't cluster everything in one area.
 
 === PHASE 3: AVAILABLE ACTIONS ===
 
 1. "create_part" — Create BasePart (ground, walls, roads, ramps, barriers, sidewalks)
    Required: className, name, parent, properties {Size, Position, Anchored:true, Material, Color}
    Roads: Material "Asphalt", Color [80,80,80]. Sidewalks: Material "Concrete", Color [180,180,180].
+   The engine adjusts Y for roads/sidewalks to sit on ground. Just use Y=0.6 for roads.
 
 2. "insert_model" — Insert 3D model from Roblox Toolbox (buildings, vehicles, trees, furniture, props)
    Required: searchQuery (1-3 descriptive words), name, position [X,Y,Z]
-   The runtime resolves searchQuery to a Toolbox model ID automatically.
+   The runtime resolves searchQuery → real Toolbox model, then:
+   - Gets the model's ACTUAL size after insertion
+   - Computes collision-free position using math
+   - Moves the model to the correct spot
+   Just provide an approximate position showing which zone/area you intend.
    GOOD: "police car", "oak tree", "skyscraper", "street light", "park bench", "dumpster", "traffic cone"
    BAD: "cool stuff", "asset", "thing", "building"  (too vague)
 
@@ -232,15 +249,41 @@ The user approved this project summary:
 12. Scripts → insert_script ONLY if user asked for gameplay mechanics
 
 === ABSOLUTE RULES ===
-- Generate AT LEAST 30 steps for any city/game world. More is better. Each step = one object.
-- NEVER generate fewer than 25 steps. Count before responding.
-- Every insert_model MUST have a "position" array. NEVER omit position.
+- Generate AT LEAST 40 steps for any city/game world. More is better. Each step = one object.
+- NEVER generate fewer than 35 steps. Count before responding.
+
+=== REPETITION & DENSITY (CRITICAL — READ THIS) ===
+A REAL city/world is NOT 35 unique items. It has MANY copies of common objects:
+- Trees: Scatter 8-15 trees across parks, sidewalks, median strips. USE THE SAME searchQuery (e.g. "oak tree") with different names ("Oak_Park_1", "Oak_Park_2", "Oak_Main_3", etc.)
+- Street lights: Place 6-10 along EVERY major road, spaced ~80 studs apart
+- Cars/vehicles: Place 5-8 vehicles across different roads (police car, taxi, sedan, truck — but also REPEAT the same type: 2-3 "sedan", 2 "police car")
+- Props: 4-6 benches, 3-4 trash cans, 2-3 fire hydrants scattered everywhere
+- Buildings: Place 2-3 copies of "apartment" or "house" in residential zones — not every building type needs to be unique
+
+The KEY: Use the same searchQuery MULTIPLE TIMES with different names and positions.
+Example — trees along a road:
+  {"action":"insert_model","searchQuery":"oak tree","name":"Oak_Road1_A","position":[-14,0.5,-160]},
+  {"action":"insert_model","searchQuery":"oak tree","name":"Oak_Road1_B","position":[-14,0.5,-80]},
+  {"action":"insert_model","searchQuery":"oak tree","name":"Oak_Road1_C","position":[-14,0.5,0]},
+  {"action":"insert_model","searchQuery":"oak tree","name":"Oak_Road1_D","position":[-14,0.5,80]},
+  {"action":"insert_model","searchQuery":"oak tree","name":"Oak_Road1_E","position":[-14,0.5,160]}
+
+=== FULL AREA COVERAGE (CRITICAL) ===
+The baseplate is 512x512 studs. Usable area: X from -240 to +240, Z from -240 to +240.
+DO NOT cluster all objects in the center. Spread hints across the ENTIRE area:
+- Buildings in EACH zone (NE, NW, SE, SW quadrants)
+- Trees, lights, props in ALL directions
+- Vehicles spread across MANY different road segments
+If most of your positions are between -80 and +80, you are CLUSTERING. FIX IT by spreading to -200, -140, 140, 200, etc.
+
+- Every insert_model MUST have a "position" array (approximate hint). NEVER omit position.
 - searchQuery MUST be descriptive 1-3 words. NEVER use generic terms.
-- Roads: Size [24, 0.2, length]. Material "Asphalt". Color [80,80,80]. Position Y = 0.6.
+- Roads: Size [24, 0.2, length]. Material "Asphalt". Color [80,80,80]. Y = 0.6.
 - EVERY road must have at LEAST 2 buildings along it (one on each side).
-- EVERY zone must have at LEAST 2 props/decorations.
+- EVERY zone must have at LEAST 3 props/decorations.
 - Use unique descriptive names: "MainRoad_NS", "Oak_Park_1", "PoliceCar_Downtown", "StreetLight_Road1_A".
-- Vary your searchQuery terms — don't use the same query for every building. Use "office building", "apartment", "shop", "restaurant", "warehouse", "factory", etc.
+- Vary searchQuery terms — use "office building", "apartment", "shop", "restaurant", "warehouse", "factory", etc.
+- The smart placement engine will auto-correct positions, but SPREAD your hints across different zones. Don't cluster hints in one area.
 
 Respond EXACTLY with this JSON (no text before/after):
 {
@@ -286,161 +329,62 @@ Respond EXACTLY with this JSON (no text before/after):
     {
       "id": 6,
       "action": "create_part",
-      "name": "SideStreet_W",
+      "name": "SideStreet_NW",
       "className": "Part",
       "parent": "Workspace",
-      "properties": { "Size": [24, 0.2, 200], "Position": [-140, 0.6, -120], "Anchored": true, "Material": "Asphalt", "Color": [80, 80, 80] }
+      "properties": { "Size": [24, 0.2, 200], "Position": [-140, 0.6, -140], "Anchored": true, "Material": "Asphalt", "Color": [80, 80, 80] }
     },
     {
       "id": 7,
       "action": "create_part",
-      "name": "SideStreet_E",
+      "name": "SideStreet_SE",
       "className": "Part",
       "parent": "Workspace",
-      "properties": { "Size": [24, 0.2, 200], "Position": [140, 0.6, 120], "Anchored": true, "Material": "Asphalt", "Color": [80, 80, 80] }
+      "properties": { "Size": [24, 0.2, 200], "Position": [140, 0.6, 140], "Anchored": true, "Material": "Asphalt", "Color": [80, 80, 80] }
     },
+    { "id": 8, "action": "insert_model", "searchQuery": "skyscraper", "name": "Skyscraper_DT_1", "position": [-60, 0.5, -80] },
+    { "id": 9, "action": "insert_model", "searchQuery": "office building", "name": "Office_DT_1", "position": [60, 0.5, -80] },
+    { "id": 10, "action": "insert_model", "searchQuery": "apartment", "name": "Apt_NE_1", "position": [160, 0.5, -160] },
+    { "id": 11, "action": "insert_model", "searchQuery": "apartment", "name": "Apt_NE_2", "position": [160, 0.5, -80] },
+    { "id": 12, "action": "insert_model", "searchQuery": "small house", "name": "House_NW_1", "position": [-160, 0.5, -160] },
+    { "id": 13, "action": "insert_model", "searchQuery": "small house", "name": "House_NW_2", "position": [-160, 0.5, -80] },
+    { "id": 14, "action": "insert_model", "searchQuery": "shop", "name": "Shop_SW_1", "position": [-160, 0.5, 60] },
+    { "id": 15, "action": "insert_model", "searchQuery": "restaurant", "name": "Restaurant_SW_1", "position": [-160, 0.5, 140] },
+    { "id": 16, "action": "insert_model", "searchQuery": "warehouse", "name": "Warehouse_SE_1", "position": [160, 0.5, 80] },
+    { "id": 17, "action": "insert_model", "searchQuery": "factory", "name": "Factory_SE_1", "position": [160, 0.5, 160] },
+    { "id": 18, "action": "insert_model", "searchQuery": "police car", "name": "PoliceCar_1", "position": [0, 0.5, -120] },
+    { "id": 19, "action": "insert_model", "searchQuery": "taxi", "name": "Taxi_1", "position": [80, 0.5, 0] },
+    { "id": 20, "action": "insert_model", "searchQuery": "sedan", "name": "Sedan_1", "position": [0, 0.5, 80] },
+    { "id": 21, "action": "insert_model", "searchQuery": "sedan", "name": "Sedan_2", "position": [-80, 0.5, 0] },
+    { "id": 22, "action": "insert_model", "searchQuery": "bus", "name": "Bus_1", "position": [0, 0.5, 180] },
+    { "id": 23, "action": "insert_model", "searchQuery": "pickup truck", "name": "Truck_1", "position": [140, 0.5, 0] },
+    { "id": 24, "action": "insert_model", "searchQuery": "oak tree", "name": "Oak_NW_1", "position": [-180, 0.5, -200] },
+    { "id": 25, "action": "insert_model", "searchQuery": "oak tree", "name": "Oak_NW_2", "position": [-120, 0.5, -200] },
+    { "id": 26, "action": "insert_model", "searchQuery": "oak tree", "name": "Oak_NE_1", "position": [100, 0.5, -200] },
+    { "id": 27, "action": "insert_model", "searchQuery": "oak tree", "name": "Oak_NE_2", "position": [180, 0.5, -200] },
+    { "id": 28, "action": "insert_model", "searchQuery": "pine tree", "name": "Pine_SW_1", "position": [-180, 0.5, 100] },
+    { "id": 29, "action": "insert_model", "searchQuery": "pine tree", "name": "Pine_SE_1", "position": [180, 0.5, 100] },
+    { "id": 30, "action": "insert_model", "searchQuery": "oak tree", "name": "Oak_Main_1", "position": [-14, 0.5, -160] },
+    { "id": 31, "action": "insert_model", "searchQuery": "oak tree", "name": "Oak_Main_2", "position": [-14, 0.5, -40] },
+    { "id": 32, "action": "insert_model", "searchQuery": "oak tree", "name": "Oak_Main_3", "position": [-14, 0.5, 80] },
+    { "id": 33, "action": "insert_model", "searchQuery": "oak tree", "name": "Oak_Main_4", "position": [-14, 0.5, 200] },
+    { "id": 34, "action": "insert_model", "searchQuery": "street light", "name": "Light_Main_1", "position": [14, 0.5, -200] },
+    { "id": 35, "action": "insert_model", "searchQuery": "street light", "name": "Light_Main_2", "position": [14, 0.5, -120] },
+    { "id": 36, "action": "insert_model", "searchQuery": "street light", "name": "Light_Main_3", "position": [14, 0.5, -40] },
+    { "id": 37, "action": "insert_model", "searchQuery": "street light", "name": "Light_Main_4", "position": [14, 0.5, 40] },
+    { "id": 38, "action": "insert_model", "searchQuery": "street light", "name": "Light_Main_5", "position": [14, 0.5, 120] },
+    { "id": 39, "action": "insert_model", "searchQuery": "street light", "name": "Light_Main_6", "position": [14, 0.5, 200] },
+    { "id": 40, "action": "insert_model", "searchQuery": "park bench", "name": "Bench_Park_1", "position": [-150, 0.5, -170] },
+    { "id": 41, "action": "insert_model", "searchQuery": "park bench", "name": "Bench_Park_2", "position": [-120, 0.5, -170] },
+    { "id": 42, "action": "insert_model", "searchQuery": "fire hydrant", "name": "Hydrant_1", "position": [-30, 0.5, -55] },
+    { "id": 43, "action": "insert_model", "searchQuery": "fire hydrant", "name": "Hydrant_2", "position": [170, 0.5, 55] },
+    { "id": 44, "action": "insert_model", "searchQuery": "dumpster", "name": "Dumpster_1", "position": [-60, 0.5, 40] },
+    { "id": 45, "action": "insert_model", "searchQuery": "traffic cone", "name": "Cone_1", "position": [30, 0.5, 14] },
+    { "id": 46, "action": "insert_model", "searchQuery": "fountain", "name": "Fountain_Park", "position": [-150, 0.5, -140] },
+    { "id": 47, "action": "insert_model", "searchQuery": "stop sign", "name": "StopSign_1", "position": [14, 0.5, -14] },
+    { "id": 48, "action": "insert_model", "searchQuery": "stop sign", "name": "StopSign_2", "position": [-14, 0.5, 14] },
     {
-      "id": 8,
-      "action": "insert_model",
-      "searchQuery": "skyscraper",
-      "name": "Skyscraper_Downtown_1",
-      "position": [-60, 0.5, -60]
-    },
-    {
-      "id": 9,
-      "action": "insert_model",
-      "searchQuery": "office building",
-      "name": "Office_Downtown_2",
-      "position": [60, 0.5, -60]
-    },
-    {
-      "id": 10,
-      "action": "insert_model",
-      "searchQuery": "apartment",
-      "name": "Apartment_East_1",
-      "position": [160, 0.5, -120]
-    },
-    {
-      "id": 11,
-      "action": "insert_model",
-      "searchQuery": "small house",
-      "name": "House_East_2",
-      "position": [160, 0.5, -60]
-    },
-    {
-      "id": 12,
-      "action": "insert_model",
-      "searchQuery": "shop",
-      "name": "Shop_West_1",
-      "position": [-160, 0.5, 60]
-    },
-    {
-      "id": 13,
-      "action": "insert_model",
-      "searchQuery": "restaurant",
-      "name": "Restaurant_West_2",
-      "position": [-160, 0.5, 140]
-    },
-    {
-      "id": 14,
-      "action": "insert_model",
-      "searchQuery": "warehouse",
-      "name": "Warehouse_SE",
-      "position": [160, 0.5, 140]
-    },
-    {
-      "id": 15,
-      "action": "insert_model",
-      "searchQuery": "police car",
-      "name": "PoliceCar_MainRd",
-      "position": [0, 3, -80]
-    },
-    {
-      "id": 16,
-      "action": "insert_model",
-      "searchQuery": "taxi",
-      "name": "Taxi_CrossRd",
-      "position": [80, 3, 0]
-    },
-    {
-      "id": 17,
-      "action": "insert_model",
-      "searchQuery": "bus",
-      "name": "Bus_MainRd_South",
-      "position": [0, 3, 120]
-    },
-    {
-      "id": 18,
-      "action": "insert_model",
-      "searchQuery": "oak tree",
-      "name": "Tree_Park_1",
-      "position": [-150, 0.5, -160]
-    },
-    {
-      "id": 19,
-      "action": "insert_model",
-      "searchQuery": "pine tree",
-      "name": "Tree_Park_2",
-      "position": [-120, 0.5, -180]
-    },
-    {
-      "id": 20,
-      "action": "insert_model",
-      "searchQuery": "park bench",
-      "name": "Bench_Park_1",
-      "position": [-140, 0.5, -150]
-    },
-    {
-      "id": 21,
-      "action": "insert_model",
-      "searchQuery": "street light",
-      "name": "StreetLight_Main_1",
-      "position": [14, 0.5, -100]
-    },
-    {
-      "id": 22,
-      "action": "insert_model",
-      "searchQuery": "street light",
-      "name": "StreetLight_Main_2",
-      "position": [14, 0.5, 0]
-    },
-    {
-      "id": 23,
-      "action": "insert_model",
-      "searchQuery": "street light",
-      "name": "StreetLight_Main_3",
-      "position": [14, 0.5, 100]
-    },
-    {
-      "id": 24,
-      "action": "insert_model",
-      "searchQuery": "fire hydrant",
-      "name": "Hydrant_Downtown",
-      "position": [-30, 0.5, -55]
-    },
-    {
-      "id": 25,
-      "action": "insert_model",
-      "searchQuery": "dumpster",
-      "name": "Dumpster_Alley",
-      "position": [-60, 0.5, 40]
-    },
-    {
-      "id": 26,
-      "action": "insert_model",
-      "searchQuery": "traffic cone",
-      "name": "Cone_CrossRd",
-      "position": [30, 0.5, 14]
-    },
-    {
-      "id": 27,
-      "action": "insert_model",
-      "searchQuery": "fountain",
-      "name": "Fountain_Park",
-      "position": [-140, 0.5, -130]
-    },
-    {
-      "id": 28,
+      "id": 49,
       "action": "create_instance",
       "className": "SpawnLocation",
       "name": "PlayerSpawn",
@@ -487,10 +431,57 @@ RULES:
 - Output ONLY the JSON array, no text before or after.
 `;
 
+// ============================================================
+// PHASE 4 — DENSIFY PASS (after initial build, fill empty areas)
+// ============================================================
+const DENSIFY_PROMPT = `${ROBLOX_KNOWLEDGE}
+${ASSET_LIBRARY}
+
+You are a World Density Inspector for Roblox Studio. The initial build phase is DONE.
+Your job: look at WHAT was built and WHERE, then add MORE objects to make the world feel alive and complete.
+
+=== CURRENT BUILD STATE ===
+{{COVERAGE_REPORT}}
+
+=== EXISTING OBJECTS ===
+{{EXISTING_OBJECTS}}
+
+=== YOUR TASK ===
+Analyze the coverage report above. For every EMPTY or SPARSE zone, add objects to fill it.
+Also check if there are enough of each type globally:
+
+**MINIMUM DENSITY TARGETS:**
+- Trees: At least 10 total, spread across 4+ different zones
+- Street lights: At least 6 total, along roads
+- Vehicles: At least 5 total, on different road segments
+- Props (benches, hydrants, trash cans, signs, cones): At least 8 total
+- Buildings: At least 1 in every non-empty zone that borders a road
+
+**RULES:**
+1. Only generate insert_model steps (no roads, ground, lighting — those are already done)
+2. Focus on EMPTY and SPARSE zones first — give them 3-5 objects each
+3. If a zone already has 3+ objects, skip it unless it's missing a type (e.g. zone has buildings but no trees)
+4. Use the SAME searchQuery for repeated items: "oak tree" x5, "street light" x4, etc.
+5. Every step MUST have: searchQuery (1-3 words), name (unique), position [X, Y, Z] (within the target zone bounds)
+6. Position Y should be 0.5 (the engine auto-corrects)
+7. Spread positions across the full zone area, not clustered at center
+8. DO NOT duplicate objects that already exist in the same area — check the existing objects list
+9. Generate between 10-25 additional steps. Quality over quantity.
+
+Respond EXACTLY with this JSON (no text before/after):
+{
+  "steps": [
+    { "id": 1, "action": "insert_model", "searchQuery": "oak tree", "name": "Oak_Fill_NW_1", "position": [-180, 0.5, -180] },
+    { "id": 2, "action": "insert_model", "searchQuery": "street light", "name": "Light_Fill_SE_1", "position": [160, 0.5, 120] }
+  ]
+}
+`;
+
 module.exports = {
   PLAN_SUMMARY_PROMPT,
   DETAILED_PLAN_PROMPT,
   STEP_RETRY_PROMPT,
+  DENSIFY_PROMPT,
   ROBLOX_KNOWLEDGE,
   // Keep old names as aliases for backward compat
   AGENT_PLANNER_PROMPT: PLAN_SUMMARY_PROMPT,

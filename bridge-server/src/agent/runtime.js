@@ -11,7 +11,7 @@
  */
 const { v4: uuid } = require('uuid');
 const AgentMemory = require('./memory');
-const { PLAN_SUMMARY_PROMPT, DETAILED_PLAN_PROMPT, STEP_RETRY_PROMPT } = require('../prompts/system');
+const { PLAN_SUMMARY_PROMPT, DETAILED_PLAN_PROMPT, STEP_RETRY_PROMPT, DENSIFY_PROMPT } = require('../prompts/system');
 const stateManager = require('./stateManager');
 const commandQueue = require('../queue/commandQueue');
 const validator = require('./validator');
@@ -165,6 +165,11 @@ class AgentRuntime {
 
             // Now execute deterministically
             await this._executeLoop();
+
+            // After initial build: analyze coverage and fill empty areas
+            if (this._running && this.status !== 'error') {
+                await this._densifyPass();
+            }
         } catch (e) {
             this.status = 'error';
             this.error = e.message;
@@ -312,23 +317,51 @@ class AgentRuntime {
     }
 
     // ----------------------------------------------------------------
-    // Execute a create_part step (simple, no model fetching)
+    // Execute a create_part step with collision-aware placement
     // ----------------------------------------------------------------
     async _executeCreatePart(step, stepNum) {
+        const props = step.properties ? { ...step.properties } : {};
+        const partName = step.name || `Part_${stepNum}`;
+
+        // Ensure anchored by default
+        if (props.Anchored === undefined) {
+            props.Anchored = true;
+        }
+
+        // --- Collision-aware position adjustment for non-ground/non-road large parts ---
+        const size = props.Size || [4, 1, 2];
+        const pos = props.Position || [0, 0.5, 0];
+        const isLargeFlat = (size[0] >= 100 || size[2] >= 100) && size[1] <= 2;
+        const nameL = partName.toLowerCase();
+        const isGround = nameL.includes('ground') || nameL.includes('baseplate') || nameL.includes('terrain');
+        const isRoad = nameL.includes('road') || nameL.includes('street') || nameL.includes('sidewalk') || nameL.includes('path');
+
+        // Only do collision check for non-ground non-road parts (buildings, walls, etc.)
+        if (!isGround && !isRoad && !isLargeFlat) {
+            const worldInfo = placementEngine.getWorldInfo(stateManager.projectState);
+            const placement = placementEngine.computePlacement(
+                size, pos, worldInfo.occupied, worldInfo.groundY, worldInfo.bounds
+            );
+            if (placement.adjusted) {
+                this.log('info', `Adjusted position for "${partName}": ${placement.reason}`);
+            }
+            props.Position = placement.position;
+        } else if (!isGround) {
+            // For roads/sidewalks — just fix Y to sit on ground correctly
+            const worldInfo = placementEngine.getWorldInfo(stateManager.projectState);
+            const correctY = worldInfo.groundY + (size[1] / 2);
+            props.Position = [pos[0], correctY, pos[2]];
+        }
+
         const cmd = {
             type: 'create_instance',
             payload: {
                 className: step.className || 'Part',
                 parent: step.parent || 'Workspace',
-                name: step.name || `Part_${stepNum}`,
-                properties: step.properties || {}
+                name: partName,
+                properties: props
             }
         };
-
-        // Ensure anchored by default
-        if (cmd.payload.properties && cmd.payload.properties.Anchored === undefined) {
-            cmd.payload.properties.Anchored = true;
-        }
 
         const validation = validator.validate(cmd);
         if (!validation.valid) {
@@ -336,7 +369,7 @@ class AgentRuntime {
             return false;
         }
 
-        this.log('info', `Creating ${cmd.payload.className}: "${cmd.payload.name}"`, cmd);
+        this.log('info', `Creating ${cmd.payload.className}: "${partName}" at [${props.Position ? props.Position.join(', ') : 'default'}]`, cmd);
 
         const enqueued = commandQueue.enqueue(this.id, cmd.type, cmd.payload);
         await this._waitForCommands([enqueued.id]);
@@ -350,34 +383,31 @@ class AgentRuntime {
         // Refresh state
         await this._refreshState();
 
-        // Verify it exists
-        const verified = this._verifyInstanceExists(step.name || `Part_${stepNum}`);
-        if (verified) {
-            this.log('info', `Verified: "${step.name}" exists in Explorer.`);
-        } else {
-            this.log('warning', `Could not verify "${step.name}" in Explorer, but command succeeded.`);
-        }
-
-        // Track in spatial map
-        const pos = step.properties?.Position;
-        const size = step.properties?.Size;
-        if (pos) {
-            this._trackPlacement(step.name || `Part_${stepNum}`, pos, size);
+        // Track in spatial map with actual position
+        if (props.Position) {
+            this._trackPlacement(partName, props.Position, size);
         }
 
         return true;
     }
 
     // ----------------------------------------------------------------
-    // Execute an insert_model step (fetch from API → insert → find real name → position)
+    // Execute an insert_model step: SMART PLACEMENT LOOP
+    // 1. Insert model into workspace (no position yet)
+    // 2. Parse actual bounds from plugin response
+    // 3. Compute collision-free position using PlacementEngine math
+    // 4. Move model to computed position
+    // 5. Track placement
     // ----------------------------------------------------------------
     async _executeInsertModel(step, stepNum) {
-        // Build the insert command — pass position directly so the plugin handles it
+        const modelName = step.name || `Model_${stepNum}`;
+
+        // --- PHASE 1: Insert the model (without positioning) ---
         const insertCmd = {
             type: 'insert_free_model',
             payload: {
                 parent: step.parent || 'Workspace',
-                name: step.name || `Model_${stepNum}`
+                name: modelName
             }
         };
 
@@ -390,19 +420,13 @@ class AgentRuntime {
             return false;
         }
 
-        // Pass position to plugin so it can position during insertion
-        if (step.position && Array.isArray(step.position)) {
-            insertCmd.payload.position = step.position;
-        }
-
         const validation = validator.validate(insertCmd);
         if (!validation.valid) {
             this.log('error', `Step ${stepNum}: Validation failed: ${validation.errors.join(', ')}`);
             return false;
         }
 
-        const posStr = step.position ? ` at [${step.position.join(', ')}]` : '';
-        this.log('info', `Inserting model: ${step.searchQuery || `assetId:${step.assetId}`}${posStr}`, insertCmd);
+        this.log('info', `Inserting model: ${step.searchQuery || `assetId:${step.assetId}`} (will compute position after)`, insertCmd);
 
         const enqueued = commandQueue.enqueue(this.id, insertCmd.type, insertCmd.payload);
         await this._waitForCommands([enqueued.id]);
@@ -413,17 +437,70 @@ class AgentRuntime {
             return false;
         }
 
-        // Log the plugin's result which now includes the actual instance name
-        this.log('info', `Plugin result: ${result.result || 'OK'}`);
-
-        // Refresh state
-        await this._refreshState();
-
-        // Track in spatial map
-        const modelName = step.name || `Model_${stepNum}`;
-        if (step.position) {
-            this._trackPlacement(modelName, step.position);
+        // --- PHASE 2: Extract actual bounds from plugin response ---
+        let modelBounds = null;
+        const resultStr = result.result || '';
+        const boundsMatch = resultStr.match(/\|BOUNDS:(\{.*\})/);
+        if (boundsMatch) {
+            try {
+                modelBounds = JSON.parse(boundsMatch[1]);
+            } catch (e) {
+                this.log('warning', `Could not parse bounds from plugin: ${e.message}`);
+            }
         }
+
+        // If we couldn't get bounds from the insert response, try get_bounds command
+        if (!modelBounds) {
+            await this._refreshState();
+            const boundsCmd = commandQueue.enqueue(this.id, 'get_bounds', {
+                path: `Workspace.${modelName}`
+            });
+            await this._waitForCommands([boundsCmd.id], 10000);
+            const boundsResult = commandQueue.commands.get(boundsCmd.id);
+            if (boundsResult.status === 'completed' && boundsResult.result) {
+                try {
+                    modelBounds = JSON.parse(boundsResult.result);
+                } catch (e) {
+                    this.log('warning', `Could not parse get_bounds result: ${e.message}`);
+                }
+            }
+        }
+
+        const actualSize = modelBounds?.size || [8, 8, 8];
+        const actualPos = modelBounds?.position || [0, 0, 0];
+        this.log('info', `Model "${modelName}" actual size: [${actualSize.join(', ')}], current pos: [${actualPos.map(n => n.toFixed(1)).join(', ')}]`);
+
+        // --- PHASE 3: Compute correct position using math ---
+        const worldInfo = placementEngine.getWorldInfo(stateManager.projectState);
+        const intendedPos = step.position || actualPos;
+
+        const placement = placementEngine.computePlacement(
+            actualSize,
+            intendedPos,
+            worldInfo.occupied,
+            worldInfo.groundY,
+            worldInfo.bounds
+        );
+
+        this.log('info', `Computed position: [${placement.position.join(', ')}] (adjusted: ${placement.adjusted}, reason: ${placement.reason})`);
+
+        // --- PHASE 4: Move model to computed position ---
+        const moveCmd = commandQueue.enqueue(this.id, 'move_instance', {
+            path: `Workspace.${modelName}`,
+            position: placement.position
+        });
+        await this._waitForCommands([moveCmd.id], 15000);
+
+        const moveResult = commandQueue.commands.get(moveCmd.id);
+        if (moveResult.status === 'failed') {
+            this.log('warning', `Move failed: ${moveResult.error} — model stays at insert position`);
+        } else {
+            this.log('info', `Moved "${modelName}" → [${placement.position.join(', ')}]`);
+        }
+
+        // --- PHASE 5: Refresh state and track ---
+        await this._refreshState();
+        this._trackPlacement(modelName, placement.position, actualSize);
 
         return true;
     }
@@ -651,6 +728,106 @@ class AgentRuntime {
     }
 
     // ----------------------------------------------------------------
+    // DENSIFY PASS: Analyze coverage gaps and add objects to fill them
+    // Runs AFTER the initial build is complete
+    // ----------------------------------------------------------------
+    async _densifyPass() {
+        if (!this._running) return;
+
+        this.log('info', '=== Starting densify pass — analyzing world coverage ===');
+        await this._refreshState();
+
+        const coverage = placementEngine.analyzeCoverage(stateManager.projectState);
+
+        this.log('info', coverage.coverageReport);
+
+        // Decide if densify is needed
+        const needsDensify =
+            coverage.emptyZones.length >= 2 ||
+            coverage.sparseZones.length >= 3 ||
+            coverage.objectCounts.trees < 8 ||
+            coverage.objectCounts.vehicles < 4 ||
+            coverage.objectCounts.lights < 5 ||
+            coverage.objectCounts.props < 6;
+
+        if (!needsDensify) {
+            this.log('info', 'World coverage is sufficient — skipping densify pass.');
+            return;
+        }
+
+        this.log('info', `Densify needed: ${coverage.emptyZones.length} empty zones, ${coverage.sparseZones.length} sparse zones.`);
+
+        // Build existing objects list
+        const worldInfo = placementEngine.getWorldInfo(stateManager.projectState);
+        const existingList = worldInfo.occupied
+            .filter(obj => {
+                const s = obj.size || [0, 0, 0];
+                return !(s[1] <= 2 && (s[0] >= 80 || s[2] >= 80));
+            })
+            .map(o => `- ${o.name || o.path} @ [${o.position.map(n => Math.round(n)).join(', ')}] size [${o.size.map(n => Math.round(n)).join(', ')}]`)
+            .join('\n') || 'No objects yet.';
+
+        // Call LLM for densify plan
+        const densifyPrompt = DENSIFY_PROMPT
+            .replace('{{COVERAGE_REPORT}}', coverage.coverageReport)
+            .replace('{{EXISTING_OBJECTS}}', existingList);
+
+        const messages = [
+            { role: 'system', content: densifyPrompt },
+            { role: 'user', content: 'Analyze the coverage and generate fill steps. Output ONLY JSON.' }
+        ];
+
+        try {
+            const response = await this.llm.chat(this.modelId, messages, { apiKeys: this.apiKeys });
+            this.memory.trackTokens(response.usage.inputTokens, response.usage.outputTokens);
+
+            const jsonStr = this._extractJsonFromResponse(response.content);
+            const densifyPlan = JSON.parse(jsonStr);
+
+            const steps = densifyPlan.steps || [];
+            if (steps.length === 0) {
+                this.log('info', 'Densify LLM returned 0 steps — world is complete.');
+                return;
+            }
+
+            this.log('info', `Densify plan: ${steps.length} additional objects to place.`);
+
+            // Pre-resolve assets for densify steps
+            for (const step of steps) {
+                if (step.action !== 'insert_model' || step.assetId || !step.searchQuery) continue;
+                try {
+                    const asset = await assetCatalog.getBestAsset(step.searchQuery);
+                    if (asset && asset.id) {
+                        step.assetId = asset.id;
+                        this.log('info', `Densify resolved "${step.searchQuery}" → ${asset.id}`);
+                    }
+                } catch (e) {
+                    this.log('warning', `Densify resolve failed for "${step.searchQuery}": ${e.message}`);
+                }
+            }
+
+            // Execute densify steps
+            for (let i = 0; i < steps.length && this._running; i++) {
+                const step = steps[i];
+                const stepNum = `D${i + 1}`;
+                this.log('info', `Densify ${stepNum}/${steps.length}: ${step.name || step.searchQuery}`);
+
+                try {
+                    if (step.action === 'insert_model') {
+                        await this._executeInsertModel(step, stepNum);
+                    }
+                } catch (err) {
+                    this.log('warning', `Densify ${stepNum} failed: ${err.message}`);
+                }
+            }
+
+            this.log('info', `=== Densify pass complete: ${steps.length} objects added ===`);
+        } catch (e) {
+            this.log('warning', `Densify pass failed: ${e.message}. Build is still complete.`);
+        }
+    }
+
+    // ----------------------------------------------------------------
     // LLM-assisted retry when direct execution fails
     // ----------------------------------------------------------------
     async _llmRetryStep(step, stepNum) {
@@ -725,8 +902,12 @@ class AgentRuntime {
         try {
             const refreshCmd = commandQueue.enqueue(this.id, 'export_state', {});
             await this._waitForCommands([refreshCmd.id], 10000);
+            const result = commandQueue.commands.get(refreshCmd.id);
+            if (result && result.status === 'failed') {
+                this.log('warning', `State export failed: ${result.error}. Placement data may be stale.`);
+            }
         } catch (e) {
-            this.log('warning', 'State refresh failed.');
+            this.log('warning', 'State refresh failed: ' + e.message);
         }
     }
 

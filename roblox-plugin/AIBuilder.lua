@@ -483,7 +483,116 @@ commandHandlers.insert_free_model = function(payload)
     end)
   end
 
-  return true, "Inserted '" .. insertedName .. "' (Asset ID: " .. tostring(assetId) .. ") at " .. tostring(parent) .. ". Instance name: " .. insertedName
+  -- Gather bounds info to return to the runtime
+  local boundsInfo = ""
+  pcall(function()
+    if mainItem then
+      if mainItem:IsA("Model") then
+        local cf, sz = mainItem:GetBoundingBox()
+        boundsInfo = string.format('|BOUNDS:{"position":[%.1f,%.1f,%.1f],"size":[%.1f,%.1f,%.1f]}',
+          cf.Position.X, cf.Position.Y, cf.Position.Z, sz.X, sz.Y, sz.Z)
+      elseif mainItem:IsA("BasePart") then
+        boundsInfo = string.format('|BOUNDS:{"position":[%.1f,%.1f,%.1f],"size":[%.1f,%.1f,%.1f]}',
+          mainItem.Position.X, mainItem.Position.Y, mainItem.Position.Z,
+          mainItem.Size.X, mainItem.Size.Y, mainItem.Size.Z)
+      end
+    end
+  end)
+
+  return true, "Inserted '" .. insertedName .. "' (Asset ID: " .. tostring(assetId) .. ") at " .. tostring(parent) .. ". Instance name: " .. insertedName .. boundsInfo
+end
+
+-- Get bounds of an existing instance (Model or BasePart)
+commandHandlers.get_bounds = function(payload)
+  local instance = resolvePath(payload.path)
+  if not instance then
+    return false, "Instance not found: " .. tostring(payload.path)
+  end
+
+  if instance:IsA("Model") then
+    local cf, sz = instance:GetBoundingBox()
+    return true, string.format('{"name":"%s","position":[%.1f,%.1f,%.1f],"size":[%.1f,%.1f,%.1f]}',
+      instance.Name, cf.Position.X, cf.Position.Y, cf.Position.Z, sz.X, sz.Y, sz.Z)
+  elseif instance:IsA("BasePart") then
+    return true, string.format('{"name":"%s","position":[%.1f,%.1f,%.1f],"size":[%.1f,%.1f,%.1f]}',
+      instance.Name, instance.Position.X, instance.Position.Y, instance.Position.Z,
+      instance.Size.X, instance.Size.Y, instance.Size.Z)
+  else
+    return false, "Instance is not a Model or BasePart: " .. instance.ClassName
+  end
+end
+
+-- Move an instance to a new position (handles Models and BaseParts)
+commandHandlers.move_instance = function(payload)
+  local instance = resolvePath(payload.path)
+  if not instance then
+    return false, "Instance not found: " .. tostring(payload.path)
+  end
+
+  local pos = payload.position
+  if not pos or type(pos) ~= "table" or #pos ~= 3 then
+    return false, "Invalid position: must be [X, Y, Z] array"
+  end
+
+  local moved = false
+
+  if instance:IsA("Model") then
+    moved = pcall(function()
+      instance:PivotTo(CFrame.new(pos[1], pos[2], pos[3]))
+    end)
+    if not moved then
+      moved = pcall(function()
+        instance:MoveTo(Vector3.new(pos[1], pos[2], pos[3]))
+      end)
+    end
+    -- Auto-ground correction: pivot may not be at bounding box center
+    -- After PivotTo, the bbox center can be offset from the pivot.
+    -- We correct so that the bbox center lands exactly at the target Y.
+    if moved then
+      pcall(function()
+        local cf, sz = instance:GetBoundingBox()
+        local bboxY = cf.Position.Y
+        local offset = bboxY - pos[2]
+        if math.abs(offset) > 0.5 then
+          instance:PivotTo(CFrame.new(pos[1], pos[2] - offset, pos[3]))
+        end
+      end)
+    end
+  elseif instance:IsA("BasePart") then
+    moved = pcall(function()
+      instance.Position = Vector3.new(pos[1], pos[2], pos[3])
+    end)
+  else
+    return false, "Cannot move instance of class: " .. instance.ClassName
+  end
+
+  if not moved then
+    return false, "Failed to move " .. tostring(payload.path)
+  end
+
+  -- Anchor all parts to prevent falling
+  pcall(function()
+    if instance:IsA("BasePart") then instance.Anchored = true end
+    for _, desc in ipairs(instance:GetDescendants()) do
+      if desc:IsA("BasePart") then desc.Anchored = true end
+    end
+  end)
+
+  -- Return new bounds
+  local boundsStr = ""
+  pcall(function()
+    if instance:IsA("Model") then
+      local cf, sz = instance:GetBoundingBox()
+      boundsStr = string.format('{"position":[%.1f,%.1f,%.1f],"size":[%.1f,%.1f,%.1f]}',
+        cf.Position.X, cf.Position.Y, cf.Position.Z, sz.X, sz.Y, sz.Z)
+    elseif instance:IsA("BasePart") then
+      boundsStr = string.format('{"position":[%.1f,%.1f,%.1f],"size":[%.1f,%.1f,%.1f]}',
+        instance.Position.X, instance.Position.Y, instance.Position.Z,
+        instance.Size.X, instance.Size.Y, instance.Size.Z)
+    end
+  end)
+
+  return true, "Moved " .. tostring(payload.path) .. " to [" .. pos[1] .. "," .. pos[2] .. "," .. pos[3] .. "] " .. boundsStr
 end
 
 -- Set properties on existing instance
@@ -625,8 +734,8 @@ commandHandlers.create_ui = function(payload)
   return true, "Created UI in " .. payload.parent
 end
 
--- Move instance (reparent)
-commandHandlers.move_instance = function(payload)
+-- Reparent instance (move to a different parent container)
+commandHandlers.reparent_instance = function(payload)
   local instance = resolvePath(payload.path)
   if not instance then
     return false, "Instance not found: " .. tostring(payload.path)
@@ -636,7 +745,7 @@ commandHandlers.move_instance = function(payload)
     return false, "New parent not found: " .. tostring(payload.newParent)
   end
   instance.Parent = newParent
-  return true, "Moved " .. tostring(payload.path) .. " to " .. tostring(payload.newParent)
+  return true, "Reparented " .. tostring(payload.path) .. " to " .. tostring(payload.newParent)
 end
 
 -- Clone instance
@@ -670,8 +779,17 @@ end
 -- Export state
 commandHandlers.export_state = function()
   local state = buildProjectState()
-  httpPost("/project-state", state)
-  return true, "State exported to bridge"
+  local result = httpPost("/project-state", state)
+  if result then
+    return true, "State exported to bridge"
+  end
+  -- Retry once if first attempt failed (possibly transient)
+  wait(0.5)
+  result = httpPost("/project-state", state)
+  if result then
+    return true, "State exported to bridge (retry)"
+  end
+  return false, "State export failed — HTTP post returned nil"
 end
 
 -- Batch execute
@@ -692,7 +810,7 @@ end
 ----------------------------------------------------------------------
 
 local function serializeInstance(instance, depth)
-  if depth > 15 then return nil end -- Prevent infinite recursion
+  if depth > 10 then return nil end -- Prevent infinite recursion
 
   local data = {
     _class = instance.ClassName,
@@ -700,6 +818,7 @@ local function serializeInstance(instance, depth)
   }
 
   -- Serialize common properties
+  local hasBoundingBox = false
   pcall(function()
     if instance:IsA("BasePart") then
       data._properties = {
@@ -717,6 +836,7 @@ local function serializeInstance(instance, depth)
         PivotPosition = {cf.Position.X, cf.Position.Y, cf.Position.Z},
         BoundingSize = {size.X, size.Y, size.Z}
       }
+      hasBoundingBox = true
     end
   end)
 
@@ -728,21 +848,29 @@ local function serializeInstance(instance, depth)
   end)
 
   -- Serialize children
+  -- For Models with bounding box data (inserted 3D models), skip geometry children
+  -- to keep state JSON compact. Only keep scripts inside them.
   local children = instance:GetChildren()
   local seenNames = {}
   for _, child in ipairs(children) do
-    local childData = serializeInstance(child, depth + 1)
-    if childData then
-      local baseName = child.Name
-      local count = seenNames[baseName] or 0
-      seenNames[baseName] = count + 1
+    -- Skip geometry children of models that already have bounding box
+    -- This prevents 40+ Toolbox models from bloating the state to 500KB+
+    if hasBoundingBox and (child:IsA("BasePart") or child:IsA("Model") or child:IsA("Accoutrement") or child:IsA("Accessory")) then
+      -- Skip — we already have the model's PivotPosition + BoundingSize
+    else
+      local childData = serializeInstance(child, depth + 1)
+      if childData then
+        local baseName = child.Name
+        local count = seenNames[baseName] or 0
+        seenNames[baseName] = count + 1
 
-      local key = baseName
-      if count > 0 then
-        key = baseName .. "__" .. tostring(count + 1)
+        local key = baseName
+        if count > 0 then
+          key = baseName .. "__" .. tostring(count + 1)
+        end
+
+        data[key] = childData
       end
-
-      data[key] = childData
     end
   end
 
@@ -824,7 +952,12 @@ local function startPolling()
         -- before unlocking the LLM's 'await _waitForCommands' promise.
         if #data.commands > 0 then
            local state = buildProjectState()
-           httpPost("/project-state", state)
+           local exportOk = httpPost("/project-state", state)
+           if not exportOk then
+             -- Retry once
+             wait(0.3)
+             httpPost("/project-state", state)
+           end
         end
 
         -- 2. Send Results (unlocks WorkerRuntime loop)
