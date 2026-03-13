@@ -179,7 +179,7 @@ Each step has:
 ```json
 {
   "id": 1,
-  "action": "create_part | insert_model | create_instance | set_lighting | create_effect | create_ui | insert_script | clone_instance | delete_instance",
+  "action": "create_part | insert_model | create_instance | set_lighting | create_effect | create_ui | insert_script | clone_instance | delete_instance | set_properties",
   "name": "InstanceName",
   "className": "Part",
   "parent": "Workspace",
@@ -207,11 +207,13 @@ create_ui                    â†’    create_ui
 insert_script                â†’    insert_script
 clone_instance               â†’    clone_instance
 delete_instance              â†’    delete_instance
+set_properties               â†’    set_properties
 ```
 
 The **insert_model** action uses a **5-phase smart insertion pipeline**:
-1. **Insert**: Download model from Roblox Toolbox via `insert_free_model`
-2. **GetBounds**: Plugin reads `Model:GetBoundingBox()` to get real dimensions
+1. **Insert**: Download model from Roblox Toolbox via `insert_free_model`.
+  During insert, plugin strips embedded terrain/ground parts and scales oversized assets to safe dimensions.
+2. **GetBounds**: Plugin reads `Model:GetBoundingBox()` to get post-cleanup dimensions
 3. **ComputePlacement**: PlacementEngine finds collision-free position using AABB detection + spiral search
 4. **Move**: `move_instance` with auto-ground correction (corrects pivotâ‰ center offset)
 5. **Track**: Record placement in spatial map for collision avoidance
@@ -1060,10 +1062,13 @@ npm run dev
 | **Densify Pass** | Post-build 4Ã—4 grid coverage analysis; auto-fills empty zones to meet density targets |
 | **Compact State Serialization** | Models skip geometry children (~90% payload reduction); export retry on failure |
 | **Reposition Agent** | LLM-powered layout optimizer on canvas â€” re-zones, re-spaces, and re-aligns all assets for best spatial layout |
+| **Repair Mode (Fix Existing Game)** | Prompts like "fix/repair/improve existing game" trigger targeted repair planning instead of rebuilding from scratch |
 | **Auto-Ground Coverage** | Detects if assets are placed outside existing baseplates and auto-creates ground to cover the build area |
+| **Toolbox Terrain Cleanup** | Removes embedded terrain/grass/baseplate parts that come inside some free models to prevent floating islands |
+| **Oversize Model Normalization** | Automatically scales down extremely large inserted models to keep worlds coherent |
 | **Multi-Prompt Awareness** | Second prompts in the same thread auto-create new baseplates/ground when building in a new area (e.g. racing track next to a city) |
 | **Asset Pre-Resolution** | All searchQuery â†’ assetId resolved upfront via Roblox Toolbox API before execution |
-| **9 Action Types** | create_part, insert_model, create_instance, set_lighting, create_effect, create_ui, insert_script, clone_instance, delete_instance |
+| **10 Action Types** | create_part, insert_model, create_instance, set_lighting, create_effect, create_ui, insert_script, clone_instance, delete_instance, set_properties |
 | **8 LLM Providers** | Anthropic, OpenAI, Google, Mistral, Groq, AWS Bedrock, HuggingFace, Ollama |
 | **20+ AI Models** | From Claude Opus 4.6 to free local Ollama models |
 | **Auto-Ground Correction** | move_instance auto-corrects pivotâ‰ center offset so models sit exactly on ground |
@@ -1097,6 +1102,8 @@ npm run dev
 | "Studio Disconnected" | Plugin not connected or heartbeat stale | Click "Connect" in Studio's AI Builder toolbar |
 | "API key not configured" | No key for selected provider | Add key to `.env` or Settings page |
 | "Allow HTTP Requests" error in Studio | Studio security blocks HTTP | Game Settings â†’ Security â†’ Allow HTTP Requests â†’ ON |
+| Floating green islands under inserted models | Free Toolbox model includes embedded terrain/baseplate | Update to latest plugin; insertion now auto-strips terrain-like child parts |
+| Existing world gets rebuilt when prompt says "fix" | Planning treated request as new build | Use latest bridge server; fix/repair prompts now run in repair mode and target only broken/misplaced content |
 | Model insertion finds no new instance | Plugin couldn't download model | Check Roblox catalog availability, try different searchQuery |
 | Step fails repeatedly | LLM generated invalid command | Check activity feed for error details; retry with different model |
 | Plugin doesn't appear in Studio | File not in Plugins folder | Verify `AIBuilder.lua` is in `%LocalAppData%\Roblox\Plugins\` |
