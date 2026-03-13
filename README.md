@@ -1,13 +1,13 @@
-﻿# ðŸš€ RoboBuilder â€” AI-Powered Roblox Game Builder
+﻿# 🚀 RoboBuilder — AI-Powered Roblox Game Builder
 
-Build complete Roblox games from a single text prompt. An AI agent plans, positions, and places every asset inside Roblox Studio â€” from terrain and roads to buildings, vehicles, lighting, UI, and game scripts.
+Build complete Roblox games from a single text prompt. An AI agent plans, positions, and places every asset inside Roblox Studio — from terrain and roads to buildings, vehicles, lighting, UI, and game scripts.
 
 ---
 
 ## Table of Contents
 
 - [High-Level Architecture](#high-level-architecture)
-- [How It Works â€” End-to-End Flow](#how-it-works--end-to-end-flow)
+- [How It Works — End-to-End Flow](#how-it-works--end-to-end-flow)
 - [3-Phase Deterministic Pipeline](#3-phase-deterministic-pipeline)
 - [Visual Canvas Layout Preview](#visual-canvas-layout-preview)
 - [Component Deep Dive](#component-deep-dive)
@@ -33,124 +33,124 @@ Build complete Roblox games from a single text prompt. An AI agent plans, positi
 ## High-Level Architecture
 
 ```
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”      HTTP/REST       â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”    HTTP Polling     â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚                     â”‚  â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–º  â”‚                     â”‚  â—„â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–º  â”‚                     â”‚
-â”‚    Web App          â”‚                       â”‚   Bridge Server     â”‚                     â”‚  Roblox Studio      â”‚
-â”‚    (Next.js)        â”‚  â—„â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€  â”‚   (Express.js)      â”‚  â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–º    â”‚  Plugin (Lua)       â”‚
-â”‚    localhost:3000   â”‚      JSON Responses   â”‚   localhost:3456    â”‚    Command Queue    â”‚                     â”‚
-â”‚                     â”‚                       â”‚                     â”‚                     â”‚                     â”‚
-â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”‚                       â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”‚                     â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”‚
-â”‚  â”‚ Builder Page  â”‚  â”‚                       â”‚  â”‚ Agent Runtime â”‚  â”‚                     â”‚  â”‚ Command       â”‚  â”‚
-â”‚  â”‚ (4 panels)    â”‚  â”‚                       â”‚  â”‚ (3-Phase AI)  â”‚  â”‚                     â”‚  â”‚ Executor      â”‚  â”‚
-â”‚  â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤  â”‚                       â”‚  â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤  â”‚                     â”‚  â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤  â”‚
-â”‚  â”‚ Settings Page â”‚  â”‚                       â”‚  â”‚ LLM Providers â”‚  â”‚                     â”‚  â”‚ State         â”‚  â”‚
-â”‚  â”‚ (API Keys)    â”‚  â”‚                       â”‚  â”‚ (8 providers) â”‚  â”‚                     â”‚  â”‚ Serializer    â”‚  â”‚
-â”‚  â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤  â”‚                       â”‚  â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤  â”‚                     â”‚  â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤  â”‚
-â”‚  â”‚ Landing Page  â”‚  â”‚                       â”‚  â”‚ Command Queue â”‚  â”‚                     â”‚  â”‚ Fuzzy Path    â”‚  â”‚
-â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â”‚                       â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â”‚                     â”‚  â”‚ Resolver      â”‚  â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                       â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                     â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+┌─────────────────────┐      HTTP/REST       ┌─────────────────────┐    HTTP Polling     ┌─────────────────────┐
+│                     │  ──────────────────►  │                     │  ◄───────────────►  │                     │
+│    Web App          │                       │   Bridge Server     │                     │  Roblox Studio      │
+│    (Next.js)        │  ◄──────────────────  │   (Express.js)      │  ──────────────►    │  Plugin (Lua)       │
+│    localhost:3000   │      JSON Responses   │   localhost:3456    │    Command Queue    │                     │
+│                     │                       │                     │                     │                     │
+│  ┌───────────────┐  │                       │  ┌───────────────┐  │                     │  ┌───────────────┐  │
+│  │ Builder Page  │  │                       │  │ Agent Runtime │  │                     │  │ Command       │  │
+│  │ (4 panels)    │  │                       │  │ (3-Phase AI)  │  │                     │  │ Executor      │  │
+│  ├───────────────┤  │                       │  ├───────────────┤  │                     │  ├───────────────┤  │
+│  │ Settings Page │  │                       │  │ LLM Providers │  │                     │  │ State         │  │
+│  │ (API Keys)    │  │                       │  │ (8 providers) │  │                     │  │ Serializer    │  │
+│  ├───────────────┤  │                       │  ├───────────────┤  │                     │  ├───────────────┤  │
+│  │ Landing Page  │  │                       │  │ Command Queue │  │                     │  │ Fuzzy Path    │  │
+│  └───────────────┘  │                       │  └───────────────┘  │                     │  │ Resolver      │  │
+└─────────────────────┘                       └─────────────────────┘                     └───────────────────┘
 ```
 
 **Data Flow Summary:**
 
-1. **User â†’ Web App**: Types a prompt like "Build a GTA-style city"
-2. **Web App â†’ Bridge Server**: `POST /api/agents/:id/prompt` with prompt + model selection
+1. **User → Web App**: Types a prompt like "Build a GTA-style city"
+2. **Web App → Bridge Server**: `POST /api/agents/:id/prompt` with prompt + model selection
 3. **Bridge Server (Agent Runtime)**: Calls LLM to create a plan summary
-4. **Bridge Server â†’ Web App**: Returns plan for user approval
-5. **User approves â†’ Bridge Server**: Calls LLM for detailed build plan + pre-resolves all asset IDs
-6. **Bridge Server â†’ Web App**: Returns detailed steps with positions; status = `awaiting_layout`
+4. **Bridge Server → Web App**: Returns plan for user approval
+5. **User approves → Bridge Server**: Calls LLM for detailed build plan + pre-resolves all asset IDs
+6. **Bridge Server → Web App**: Returns detailed steps with positions; status = `awaiting_layout`
 7. **Visual Canvas Preview**: User sees a top-down 2D map with every asset positioned; can drag to reposition
-8. **Optional: Reposition Agent**: User clicks "Use Reposition Agent" â€” LLM optimizes all positions for spatial layout
-9. **User confirms layout â†’ Bridge Server**: Updated positions sent back; auto-creates ground if assets are outside existing baseplates
-10. **Bridge Server â†’ Plugin**: Commands placed in queue, plugin polls `GET /api/commands` every 1s
-11. **Plugin â†’ Roblox Studio**: Executes each command using 5-phase smart insertion pipeline
-12. **Plugin â†’ Bridge Server**: Reports results + exports compact project state back
+8. **Optional: Reposition Agent**: User clicks "Use Reposition Agent" — LLM optimizes all positions for spatial layout
+9. **User confirms layout → Bridge Server**: Updated positions sent back; auto-creates ground if assets are outside existing baseplates
+10. **Bridge Server → Plugin**: Commands placed in queue, plugin polls `GET /api/commands` every 1s
+11. **Plugin → Roblox Studio**: Executes each command using 5-phase smart insertion pipeline
+12. **Plugin → Bridge Server**: Reports results + exports compact project state back
 13. **Bridge Server**: Verifies each step, runs densify pass to fill empty areas, proceeds to next
 
 ---
 
-## How It Works â€” End-to-End Flow
+## How It Works — End-to-End Flow
 
 ```
-                                            â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-                                            â”‚              USER INTERACTION             â”‚
-                                            â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                                                              â”‚
+                                            ┌──────────────────────────────────────────┐
+                                            │              USER INTERACTION             │
+                                            └─────────────────┬────────────────────────┘
+                                                              │
                                                   Types: "Build a GTA city"
-                                                              â”‚
-                                                              â–¼
-                                            â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-                                            â”‚          PHASE 1: PLAN SUMMARY           â”‚
-                                            â”‚                                          â”‚
-                                            â”‚  LLM receives: System prompt + Explorer  â”‚
-                                            â”‚  state + User request                    â”‚
-                                            â”‚                                          â”‚
-                                            â”‚  LLM returns: { title, summary, items }  â”‚
-                                            â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                                                              â”‚
+                                                              │
+                                                              ▼
+                                            ┌──────────────────────────────────────────┐
+                                            │          PHASE 1: PLAN SUMMARY           │
+                                            │                                          │
+                                            │  LLM receives: System prompt + Explorer  │
+                                            │  state + User request                    │
+                                            │                                          │
+                                            │  LLM returns: { title, summary, items }  │
+                                            └─────────────────┬────────────────────────┘
+                                                              │
                                                   User sees plan preview in UI
                                                   Clicks "Approve & Execute"
-                                                              â”‚
-                                                              â–¼
-                                            â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-                                            â”‚        PHASE 2: DETAILED PLANNING        â”‚
-                                            â”‚                                          â”‚
-                                            â”‚  LLM generates ordered steps with exact  â”‚
-                                            â”‚  positions, sizes, materials, asset IDs   â”‚
-                                            â”‚                                          â”‚
-                                            â”‚  Pre-resolves: searchQuery â†’ assetId     â”‚
-                                            â”‚  via Roblox Toolbox API for all models    â”‚
-                                            â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                                                              â”‚
-                                                              â–¼
-                                            â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-                                            â”‚     VISUAL CANVAS LAYOUT PREVIEW         â”‚
-                                            â”‚                                          â”‚
-                                            â”‚  Top-down 2D map appears in web app      â”‚
-                                            â”‚  Every asset shown as draggable box       â”‚
-                                            â”‚  Color-coded by action type               â”‚
-                                            â”‚  User drags assets to reposition them     â”‚
-                                            â”‚  Positions map 1:1 to Roblox studs        â”‚
-                                            â”‚                                          â”‚
-                                            â”‚  Optional: "Use Reposition Agent" button  â”‚
-                                            â”‚  â†’ LLM re-optimizes all positions         â”‚
-                                            â”‚  â†’ Canvas updates, user can further edit  â”‚
-                                            â”‚                                          â”‚
-                                            â”‚  User clicks "Confirm Layout & Execute"   â”‚
-                                            â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                                                              â”‚
-                                                              â–¼
-                                            â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-                                            â”‚   AUTO-GROUND COVERAGE CHECK             â”‚
-                                            â”‚   If assets outside existing baseplates   â”‚
-                                            â”‚   â†’ auto-create ground to cover area      â”‚
-                                            â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                                                              â”‚
-                                                              â–¼
-                                            â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-                                            â”‚     PHASE 3: DETERMINISTIC EXECUTION     â”‚
-                                            â”‚                                          â”‚
-                                            â”‚  For each step (NO LLM calls):           â”‚
-                                            â”‚                                          â”‚
-                                            â”‚  insert_model uses 5-phase pipeline:     â”‚
-                                            â”‚  â”Œâ”€ Insert â†’ GetBounds â†’ Compute â”€â”€â”€â”€â”€â” â”‚
-                                            â”‚  â”‚  â†’ Move (auto-ground correct)       â”‚ â”‚
-                                            â”‚  â”‚  â†’ Track in spatial map             â”‚ â”‚
-                                            â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜ â”‚
-                                            â”‚                                          â”‚
-                                            â”‚  If step fails â†’ LLM retry (max 2x)     â”‚
-                                            â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
-                                                              â”‚
-                                                              â–¼
-                                            â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-                                            â”‚          DENSIFY PASS (POST-BUILD)       â”‚
-                                            â”‚                                          â”‚
-                                            â”‚  Analyzes 4Ã—4 coverage grid:             â”‚
-                                            â”‚  - Counts objects per zone per type       â”‚
-                                            â”‚  - Identifies empty/sparse areas          â”‚
-                                            â”‚  - LLM generates fill steps               â”‚
-                                            â”‚  - Executes additional placements          â”‚
-                                            â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                                              │
+                                                              ▼
+                                            ┌──────────────────────────────────────────┐
+                                            │        PHASE 2: DETAILED PLANNING        │
+                                            │                                          │
+                                            │  LLM generates ordered steps with exact  │
+                                            │  positions, sizes, materials, asset IDs   │
+                                            │                                          │
+                                            │  Pre-resolves: searchQuery → assetId     │
+                                            │  via Roblox Toolbox API for all models    │
+                                            └─────────────────┬────────────────────────┘
+                                                              │
+                                                              ▼
+                                            ┌──────────────────────────────────────────┐
+                                            │     VISUAL CANVAS LAYOUT PREVIEW         │
+                                            │                                          │
+                                            │  Top-down 2D map appears in web app      │
+                                            │  Every asset shown as draggable box       │
+                                            │  Color-coded by action type               │
+                                            │  User drags assets to reposition them     │
+                                            │  Positions map 1:1 to Roblox studs        │
+                                            │                                          │
+                                            │  Optional: "Use Reposition Agent" button  │
+                                            │  → LLM re-optimizes all positions         │
+                                            │  → Canvas updates, user can further edit  │
+                                            │                                          │
+                                            │  User clicks "Confirm Layout & Execute"   │
+                                            └─────────────────┬────────────────────────┘
+                                                              │
+                                                              ▼
+                                            ┌──────────────────────────────────────────┐
+                                            │   AUTO-GROUND COVERAGE CHECK             │
+                                            │   If assets outside existing baseplates   │
+                                            │   → auto-create ground to cover area      │
+                                            └─────────────────┬────────────────────────┘
+                                                              │
+                                                              ▼
+                                            ┌──────────────────────────────────────────┐
+                                            │     PHASE 3: DETERMINISTIC EXECUTION     │
+                                            │                                          │
+                                            │  For each step (NO LLM calls):           │
+                                            │                                          │
+                                            │  insert_model uses 5-phase pipeline:     │
+                                            │  ┌─ Insert → GetBounds → Compute ─────┐ │
+                                            │  │  → Move (auto-ground correct)       │ │
+                                            │  │  → Track in spatial map             │ │
+                                            │  └───────────────────────────────────┘ │
+                                            │                                          │
+                                            │  If step fails → LLM retry (max 2x)     │
+                                            └─────────────────┬────────────────────────┘
+                                                              │
+                                                              ▼
+                                            ┌──────────────────────────────────────────┐
+                                            │          DENSIFY PASS (POST-BUILD)       │
+                                            │                                          │
+                                            │  Analyzes 4×4 coverage grid:             │
+                                            │  - Counts objects per zone per type       │
+                                            │  - Identifies empty/sparse areas          │
+                                            │  - LLM generates fill steps               │
+                                            │  - Executes additional placements          │
+                                            └──────────────────────────────────────────┘
 ```
 
 ---
@@ -159,7 +159,7 @@ Build complete Roblox games from a single text prompt. An AI agent plans, positi
 
 The core innovation is a **3-phase pipeline** where the LLM is only called **twice** (once for summary, once for detailed plan), with a **visual canvas layout preview** between planning and execution. The runtime then executes deterministically:
 
-### Phase 1 â€” Plan Summary (LLM Call #1)
+### Phase 1 — Plan Summary (LLM Call #1)
 
 | Input | Output |
 |-------|--------|
@@ -169,7 +169,7 @@ The core innovation is a **3-phase pipeline** where the LLM is only called **twi
 - No coordinates or technical details
 - Displayed in the web app's plan preview panel
 
-### Phase 2 â€” Detailed Plan (LLM Call #2)
+### Phase 2 — Detailed Plan (LLM Call #2)
 
 | Input | Output |
 |-------|--------|
@@ -191,23 +191,23 @@ Each step has:
 }
 ```
 
-### Phase 3 â€” Deterministic Execution (No LLM)
+### Phase 3 — Deterministic Execution (No LLM)
 
-Before execution, the user sees a **Visual Canvas Layout Preview** â€” a full-screen top-down 2D map showing every asset at its planned position. Assets can be dragged to new positions. When the user confirms the layout, the runtime converts each plan step directly into plugin commands:
+Before execution, the user sees a **Visual Canvas Layout Preview** — a full-screen top-down 2D map showing every asset at its planned position. Assets can be dragged to new positions. When the user confirms the layout, the runtime converts each plan step directly into plugin commands:
 
 ```
-Plan Step                    â†’    Plugin Command
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-create_part                  â†’    create_instance
-insert_model                 â†’    insert_free_model â†’ get_bounds â†’ compute_placement â†’ move_instance
-create_instance              â†’    create_instance
-set_lighting                 â†’    set_properties (path: "Lighting")
-create_effect                â†’    create_instance (parent: "Lighting")
-create_ui                    â†’    create_ui
-insert_script                â†’    insert_script
-clone_instance               â†’    clone_instance
-delete_instance              â†’    delete_instance
-set_properties               â†’    set_properties
+Plan Step                    →    Plugin Command
+─────────────────────────────────────────────────────
+create_part                  →    create_instance
+insert_model                 →    insert_free_model → get_bounds → compute_placement → move_instance
+create_instance              →    create_instance
+set_lighting                 →    set_properties (path: "Lighting")
+create_effect                →    create_instance (parent: "Lighting")
+create_ui                    →    create_ui
+insert_script                →    insert_script
+clone_instance               →    clone_instance
+delete_instance              →    delete_instance
+set_properties               →    set_properties
 ```
 
 The **insert_model** action uses a **5-phase smart insertion pipeline**:
@@ -215,7 +215,7 @@ The **insert_model** action uses a **5-phase smart insertion pipeline**:
   During insert, plugin strips embedded terrain/ground parts and scales oversized assets to safe dimensions.
 2. **GetBounds**: Plugin reads `Model:GetBoundingBox()` to get post-cleanup dimensions
 3. **ComputePlacement**: PlacementEngine finds collision-free position using AABB detection + spiral search
-4. **Move**: `move_instance` with auto-ground correction (corrects pivotâ‰ center offset)
+4. **Move**: `move_instance` with auto-ground correction (corrects pivot≠center offset)
 5. **Track**: Record placement in spatial map for collision avoidance
 
 **LLM is only re-invoked if a step fails** (max 2 retries per step), with the current Symbol Map provided for context.
@@ -224,7 +224,7 @@ The **insert_model** action uses a **5-phase smart insertion pipeline**:
 
 ## Component Deep Dive
 
-### 1. Web App (Next.js) â€” localhost:3000
+### 1. Web App (Next.js) — localhost:3000
 
 **Tech Stack:** Next.js 16, React 19, TypeScript, CSS Modules
 
@@ -236,27 +236,27 @@ The **insert_model** action uses a **5-phase smart insertion pipeline**:
 | Builder | `/builder` | Main 4-panel workspace |
 | Settings | `/settings` | API key management (stored in localStorage) |
 
-**Builder Page â€” 4 Resizable Panels:**
+**Builder Page — 4 Resizable Panels:**
 
 ```
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚         â”‚              â”‚          â”‚          â”‚
-â”‚ PROMPT  â”‚  ACTIVITY    â”‚  AGENTS  â”‚ PROJECT  â”‚
-â”‚ PANEL   â”‚  FEED        â”‚  LIST    â”‚ TREE     â”‚
-â”‚         â”‚              â”‚          â”‚          â”‚
-â”‚ - Model â”‚  - Plan      â”‚  - Agent â”‚ - Full   â”‚
-â”‚   selectâ”‚    preview   â”‚    cards â”‚   Explorerâ”‚
-â”‚ - Text  â”‚  - Step-by-  â”‚  - Statusâ”‚   hierarchyâ”‚
-â”‚   input â”‚    step logs â”‚    dots  â”‚ - Classes â”‚
-â”‚ - Screenâ”‚  - Progress  â”‚  - New   â”‚ - Props  â”‚
-â”‚   shot  â”‚    bar       â”‚    agent â”‚          â”‚
-â”‚ - Asset â”‚  - Approve/  â”‚    btn   â”‚          â”‚
-â”‚   ID    â”‚    Modify    â”‚          â”‚          â”‚
-â”‚ - Send  â”‚              â”‚          â”‚          â”‚
-â”‚ - Pause â”‚              â”‚          â”‚          â”‚
-â”‚   Resumeâ”‚              â”‚          â”‚          â”‚
-â”‚   Stop  â”‚              â”‚          â”‚          â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+┌─────────┬──────────────┬──────────┬──────────┐
+│         │              │          │          │
+│ PROMPT  │  ACTIVITY    │  AGENTS  │ PROJECT  │
+│ PANEL   │  FEED        │  LIST    │ TREE     │
+│         │              │          │          │
+│ - Model │  - Plan      │  - Agent │ - Full   │
+│   select│    preview   │    cards │   Explorer│
+│ - Text  │  - Step-by-  │  - Status│   hierarchy│
+│   input │    step logs │    dots  │ - Classes │
+│ - Screen│  - Progress  │  - New   │ - Props  │
+│   shot  │    bar       │    agent │          │
+│ - Asset │  - Approve/  │    btn   │          │
+│   ID    │    Modify    │          │          │
+│ - Send  │              │          │          │
+│ - Pause │              │          │          │
+│   Resume│              │          │          │
+│   Stop  │              │          │          │
+└─────────┴──────────────┴──────────┴──────────┘
 ```
 
 **Polling:** Every 2 seconds, fetches plugin status, agent list, activity feed, and project tree.
@@ -279,7 +279,7 @@ The **insert_model** action uses a **5-phase smart insertion pipeline**:
 
 ---
 
-### 2. Bridge Server (Express) â€” localhost:3456
+### 2. Bridge Server (Express) — localhost:3456
 
 **Tech Stack:** Express.js, CORS, multer for file uploads, 50MB body limit
 
@@ -287,89 +287,89 @@ The **insert_model** action uses a **5-phase smart insertion pipeline**:
 
 ```
 bridge-server/src/
-â”œâ”€â”€ index.js              â† Express app setup, middleware, route mounting
-â”œâ”€â”€ config.js             â† Port, provider configs, API keys, paths
-â”‚
-â”œâ”€â”€ routes/
-â”‚   â”œâ”€â”€ agent.js          â† CRUD for agents, prompt, approve, pause/resume/stop
-â”‚   â”œâ”€â”€ bridge.js         â† Plugin communication: command polling, results, state
-â”‚   â”œâ”€â”€ assets.js         â† File upload/download (multer, 50MB limit)
-â”‚   â””â”€â”€ models.js         â† List all available LLM models
-â”‚
-â”œâ”€â”€ agent/
-â”‚   â”œâ”€â”€ runtime.js        â† â˜… CORE: 3-phase deterministic pipeline (28 methods)
-â”‚   â”œâ”€â”€ agentPool.js      â† Agent factory + registry (Map<id, AgentRuntime>)
-â”‚   â”œâ”€â”€ providers.js      â† Multi-LLM adapter (8 providers, unified interface)
-â”‚   â”œâ”€â”€ stateManager.js   â† Central project state + version tracking
-â”‚   â”œâ”€â”€ codeAnalyzer.js   â† Parses project state â†’ Symbol Map for AI context
-â”‚   â”œâ”€â”€ placementEngine.jsâ† Spatial guidance (ground Y, baseplate bounds, slots)
-â”‚   â”œâ”€â”€ assetCatalog.js   â† Roblox Catalog v2 API search via roproxy
-â”‚   â”œâ”€â”€ validator.js      â† Command validation + auto-repair (18 command types)
-â”‚   â”œâ”€â”€ lockManager.js    â† Workspace area locking for multi-agent safety
-â”‚   â””â”€â”€ memory.js         â† Conversation history, plan, snapshots, token tracking
-â”‚
-â”œâ”€â”€ queue/
-â”‚   â””â”€â”€ commandQueue.js   â† FIFO queue: enqueue â†’ dequeue â†’ reportResult
-â”‚
-â””â”€â”€ prompts/
-    â””â”€â”€ system.js         â† All LLM system prompts + Roblox knowledge base
+├── index.js              ← Express app setup, middleware, route mounting
+├── config.js             ← Port, provider configs, API keys, paths
+│
+├── routes/
+│   ├── agent.js          ← CRUD for agents, prompt, approve, pause/resume/stop
+│   ├── bridge.js         ← Plugin communication: command polling, results, state
+│   ├── assets.js         ← File upload/download (multer, 50MB limit)
+│   └── models.js         ← List all available LLM models
+│
+├── agent/
+│   ├── runtime.js        ← ★ CORE: 3-phase deterministic pipeline (28 methods)
+│   ├── agentPool.js      ← Agent factory + registry (Map<id, AgentRuntime>)
+│   ├── providers.js      ← Multi-LLM adapter (8 providers, unified interface)
+│   ├── stateManager.js   ← Central project state + version tracking
+│   ├── codeAnalyzer.js   ← Parses project state → Symbol Map for AI context
+│   ├── placementEngine.js← Spatial guidance (ground Y, baseplate bounds, slots)
+│   ├── assetCatalog.js   ← Roblox Catalog v2 API search via roproxy
+│   ├── validator.js      ← Command validation + auto-repair (18 command types)
+│   ├── lockManager.js    ← Workspace area locking for multi-agent safety
+│   └── memory.js         ← Conversation history, plan, snapshots, token tracking
+│
+├── queue/
+│   └── commandQueue.js   ← FIFO queue: enqueue → dequeue → reportResult
+│
+└── prompts/
+    └── system.js         ← All LLM system prompts + Roblox knowledge base
 ```
 
-**Agent Runtime â€” Core Methods:**
+**Agent Runtime — Core Methods:**
 
 ```
                       AgentRuntime
-    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-    â”‚                                           â”‚
-    â”‚  Lifecycle:                                â”‚
-    â”‚    constructor(id, llm, config)            â”‚
-    â”‚    start(prompt, modelId, apiKeys)         â”‚
-    â”‚    approvePlan()                           â”‚
-    â”‚    confirmLayout()     â† canvas â†’ execute  â”‚
-    â”‚    updatePositions()   â† canvas drag edits  â”‚
-    â”‚    repositionLayout()  â† LLM layout agent   â”‚
-    â”‚    pause()                                 â”‚
-    â”‚    resume() â†’ _resumeLoop()               â”‚
-    â”‚    stop()                                  â”‚
-    â”‚                                           â”‚
-    â”‚  Phase 2:                                  â”‚
-    â”‚    _buildDetailedPlan()                    â”‚
-    â”‚    _preResolveAssets() â† Toolbox API       â”‚
-    â”‚    _executeAfterLayout()                   â”‚
-    â”‚    _ensureGroundCoverage() â† auto-baseplateâ”‚
-    â”‚                                           â”‚
-    â”‚  Phase 3 â€” Execution:                      â”‚
-    â”‚    _executeLoop()                          â”‚
-    â”‚    _executeCreatePart(step)                â”‚
-    â”‚    _executeInsertModel(step) â† 5-phase     â”‚
-    â”‚    _executeInsertScript(step)              â”‚
-    â”‚    _executeCreateInstance(step)            â”‚
-    â”‚    _executeSetLighting(step)               â”‚
-    â”‚    _executeCreateEffect(step)              â”‚
-    â”‚    _executeCreateUI(step)                  â”‚
-    â”‚    _executeCloneInstance(step)             â”‚
-    â”‚    _executeDeleteInstance(step)            â”‚
-    â”‚                                           â”‚
-    â”‚  Post-Build:                               â”‚
-    â”‚    _densifyPass() â† coverage analysis       â”‚
-    â”‚                                           â”‚
-    â”‚  Recovery:                                 â”‚
-    â”‚    _llmRetryStep(step) â€” max 2 retries    â”‚
-    â”‚                                           â”‚
-    â”‚  Helpers:                                  â”‚
-    â”‚    _refreshState()                         â”‚
-    â”‚    _getWorkspaceChildNames()               â”‚
-    â”‚    _verifyInstanceExists(name)             â”‚
-    â”‚    _extractJsonFromResponse(content)       â”‚
-    â”‚    _waitForCommands(ids, timeout)          â”‚
-    â”‚    _trackPlacement(name, position, size)   â”‚
-    â”‚                                           â”‚
-    â”‚  State:                                    â”‚
-    â”‚    log(type, message, data)                â”‚
-    â”‚    updateProjectState(state)               â”‚
-    â”‚    getStatus() â†’ {progress, plan, ...}     â”‚
-    â”‚    getActivity(limit)                      â”‚
-    â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+    ┌───────────────────────────────────────────┐
+    │                                           │
+    │  Lifecycle:                                │
+    │    constructor(id, llm, config)            │
+    │    start(prompt, modelId, apiKeys)         │
+    │    approvePlan()                           │
+    │    confirmLayout()     ← canvas → execute  │
+    │    updatePositions()   ← canvas drag edits  │
+    │    repositionLayout()  ← LLM layout agent   │
+    │    pause()                                 │
+    │    resume() → _resumeLoop()               │
+    │    stop()                                  │
+    │                                           │
+    │  Phase 2:                                  │
+    │    _buildDetailedPlan()                    │
+    │    _preResolveAssets() ← Toolbox API       │
+    │    _executeAfterLayout()                   │
+    │    _ensureGroundCoverage() ← auto-baseplate│
+    │                                           │
+    │  Phase 3 — Execution:                      │
+    │    _executeLoop()                          │
+    │    _executeCreatePart(step)                │
+    │    _executeInsertModel(step) ← 5-phase     │
+    │    _executeInsertScript(step)              │
+    │    _executeCreateInstance(step)            │
+    │    _executeSetLighting(step)               │
+    │    _executeCreateEffect(step)              │
+    │    _executeCreateUI(step)                  │
+    │    _executeCloneInstance(step)             │
+    │    _executeDeleteInstance(step)            │
+    │                                           │
+    │  Post-Build:                               │
+    │    _densifyPass() ← coverage analysis       │
+    │                                           │
+    │  Recovery:                                 │
+    │    _llmRetryStep(step) — max 2 retries    │
+    │                                           │
+    │  Helpers:                                  │
+    │    _refreshState()                         │
+    │    _getWorkspaceChildNames()               │
+    │    _verifyInstanceExists(name)             │
+    │    _extractJsonFromResponse(content)       │
+    │    _waitForCommands(ids, timeout)          │
+    │    _trackPlacement(name, position, size)   │
+    │                                           │
+    │  State:                                    │
+    │    log(type, message, data)                │
+    │    updateProjectState(state)               │
+    │    getStatus() → {progress, plan, ...}     │
+    │    getActivity(limit)                      │
+    └───────────────────────────────────────────┘
 ```
 
 ---
@@ -381,37 +381,37 @@ bridge-server/src/
 **How it connects:**
 
 ```
-Plugin starts â†’ User clicks "Connect" button
-       â”‚
-       â–¼
-  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-  â”‚  THREE CONCURRENT LOOPS:                              â”‚
-  â”‚                                                      â”‚
-  â”‚  1. Command Polling Loop (every 1s)                  â”‚
-  â”‚     GET /api/commands â†’ execute â†’ POST /result       â”‚
-  â”‚     After EVERY command: force state export           â”‚
-  â”‚                                                      â”‚
-  â”‚  2. Heartbeat Loop (every 3s)                        â”‚
-  â”‚     POST /api/heartbeat                              â”‚
-  â”‚                                                      â”‚
-  â”‚  3. State Export Loop (every 10s)                     â”‚
-  â”‚     Serializes FULL project hierarchy â†’ POST          â”‚
-  â”‚     /api/project-state                               â”‚
-  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+Plugin starts → User clicks "Connect" button
+       │
+       ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  THREE CONCURRENT LOOPS:                              │
+  │                                                      │
+  │  1. Command Polling Loop (every 1s)                  │
+  │     GET /api/commands → execute → POST /result       │
+  │     After EVERY command: force state export           │
+  │                                                      │
+  │  2. Heartbeat Loop (every 3s)                        │
+  │     POST /api/heartbeat                              │
+  │                                                      │
+  │  3. State Export Loop (every 10s)                     │
+  │     Serializes FULL project hierarchy → POST          │
+  │     /api/project-state                               │
+  └──────────────────────────────────────────────────────┘
 ```
 
 **Plugin Command Handlers (14 types):**
 
 | Command | What it does |
 |---------|-------------|
-| `create_instance` | `Instance.new(className)` â€” any Roblox class |
-| `insert_free_model` | Search Roblox catalog â†’ `game:GetObjects()` or `InsertService:LoadAsset()` |
-| `set_properties` | Resolve path â†’ set properties (auto-handles Model:MoveTo, Color3, Vector3, Enum, UDim2) |
-| `delete_instance` | Resolve path â†’ `Instance:Destroy()` |
+| `create_instance` | `Instance.new(className)` — any Roblox class |
+| `insert_free_model` | Search Roblox catalog → `game:GetObjects()` or `InsertService:LoadAsset()` |
+| `set_properties` | Resolve path → set properties (auto-handles Model:MoveTo, Color3, Vector3, Enum, UDim2) |
+| `delete_instance` | Resolve path → `Instance:Destroy()` |
 | `insert_script` | Create Script/LocalScript/ModuleScript with source code |
 | `update_script` | Replace entire script source |
-| `patch_script` | Line-level diffs (replace, insert, delete) â€” preserves unchanged lines |
-| `create_ui` | Recursive UI tree creation (ScreenGui â†’ Frames â†’ Labels â†’ Layouts) |
+| `patch_script` | Line-level diffs (replace, insert, delete) — preserves unchanged lines |
+| `create_ui` | Recursive UI tree creation (ScreenGui → Frames → Labels → Layouts) |
 | `move_instance` | Reposition an instance with auto-ground correction (PivotTo + bbox center offset fix) |
 | `reparent_instance` | Move an instance to a new parent (reparenting) |
 | `clone_instance` | `Instance:Clone()` with optional rename and reparent |
@@ -421,15 +421,15 @@ Plugin starts â†’ User clicks "Connect" button
 
 **Smart Property Setter:**
 The plugin's `setProperties()` function handles all Roblox types automatically:
-- `[x, y, z]` â†’ `Vector3.new(x, y, z)`
-- `[r, g, b]` on Color keys â†’ `Color3.fromRGB(r, g, b)`
-- `[sx, ox, sy, oy]` â†’ `UDim2.new(sx, ox, sy, oy)`
-- String enum values â†’ auto-resolved via brute-force Enum search
-- Model positioning â†’ `Model:MoveTo()` / `Model:PivotTo()`
-- Model anchoring â†’ propagated to all descendant BaseParts
+- `[x, y, z]` → `Vector3.new(x, y, z)`
+- `[r, g, b]` on Color keys → `Color3.fromRGB(r, g, b)`
+- `[sx, ox, sy, oy]` → `UDim2.new(sx, ox, sy, oy)`
+- String enum values → auto-resolved via brute-force Enum search
+- Model positioning → `Model:MoveTo()` / `Model:PivotTo()`
+- Model anchoring → propagated to all descendant BaseParts
 
 **State Serializer (Compact):**
-Recursively serializes the project tree (depth limit: 10) with **compact mode** â€” Models skip geometry children (BaseParts, child Models, Accessories) when bounding box data is available, reducing payload by ~90%. Includes:
+Recursively serializes the project tree (depth limit: 10) with **compact mode** — Models skip geometry children (BaseParts, child Models, Accessories) when bounding box data is available, reducing payload by ~90%. Includes:
 - Services: Workspace, ServerScriptService, ReplicatedStorage, StarterGui, StarterPlayer, Lighting, ServerStorage
 - Each instance: `_class`, `_name`, `_properties` (Position, Size, PivotPosition, BoundingSize, Anchored, Material, Color, etc.)
 - Scripts: `_source` field with full Lua source code
@@ -437,7 +437,7 @@ Recursively serializes the project tree (depth limit: 10) with **compact mode** 
 - Export failure detection: retries on nil return from `HttpService:PostAsync`
 
 **Path Resolution:**
-Uses fuzzy matching: exact match â†’ `Name__ordinal` convention â†’ case-insensitive match â†’ `FindFirstChild` fallback
+Uses fuzzy matching: exact match → `Name__ordinal` convention → case-insensitive match → `FindFirstChild` fallback
 
 ---
 
@@ -447,45 +447,45 @@ Uses fuzzy matching: exact match â†’ `Name__ordinal` convention â†’ ca
 
 ```
                   start()
-    idle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–º planning
-                                   â”‚
+    idle ────────────────────► planning
+                                   │
                           LLM returns summary
-                                   â”‚
-                                   â–¼
+                                   │
+                                   ▼
                           awaiting_approval
-                                   â”‚
+                                   │
                           approvePlan()
-                                   â”‚
-                                   â–¼
+                                   │
+                                   ▼
                            (generating plan)
-                                   â”‚
+                                   │
                           LLM returns detailed steps
                           Pre-resolves all asset IDs
-                                   â”‚
-                                   â–¼
-                          awaiting_layout  â—„â”€â”€ updatePositions()
-                            /      â”‚   â–²          (from canvas)
-                           /       â”‚   â”‚
-                          /        â”‚  repositionLayout()
-                         /         â”‚   (LLM re-optimizes,
-                        /          â”‚    stays in awaiting_layout)
+                                   │
+                                   ▼
+                          awaiting_layout  ◄── updatePositions()
+                            /      │   ▲          (from canvas)
+                           /       │   │
+                          /        │  repositionLayout()
+                         /         │   (LLM re-optimizes,
+                        /          │    stays in awaiting_layout)
                        /   confirmLayout()
-                         â–¼        â”‚
-                             executing â—„â”€â”€â”€â”€â”€â”€ resume()
-                            /    â”‚    \           â–²
-                   step ok /     â”‚     \ step     â”‚
-                          /      â”‚      \ fails   â”‚
-                         â–¼       â”‚       â–¼        â”‚
+                         ▼        │
+                             executing ◄────── resume()
+                            /    │    \           ▲
+                   step ok /     │     \ step     │
+                          /      │      \ fails   │
+                         ▼       │       ▼        │
                      (next     pause()  _llmRetryStep()
-                      step)      â”‚      (max 2x)
-                         \       â–¼       /
-                          \   paused â”€â”€â”€â”˜
-                           \    â”‚
-                            â–¼   â”‚ stop()
-                          complete â—„â”€â”€â”€â”€ all steps done
+                      step)      │      (max 2x)
+                         \       ▼       /
+                          \   paused ───┘
+                           \    │
+                            ▼   │ stop()
+                          complete ◄──── all steps done
                                          + densifyPass()
-                                â”‚
-                                â–¼
+                                │
+                                ▼
                              error (on any unrecoverable failure)
 ```
 
@@ -548,7 +548,7 @@ After Phase 2 generates the detailed plan (with positions for every asset), the 
 \u2502  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518  \u2502\u25cf Light \u2502 \u2502
 \u2502  Legend: \u25a0 create_part \u25a0 insert_model ...    \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518 \u2502
 \u2502                                                          \u2502
-│  [🤖 Reposition]  [Confirm & Execute]  [Skip]      │
+│  [Reposition Agent]  [Confirm & Execute]  [Skip]    │
 \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518
 ```
 
@@ -586,36 +586,36 @@ When the user drags a box on the canvas, the new pixel position is converted to 
 
 ```
 Runtime                    CommandQueue                 Plugin
-   â”‚                            â”‚                         â”‚
-   â”‚  enqueue(type, payload)    â”‚                         â”‚
-   â”‚ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–º â”‚                         â”‚
-   â”‚         returns {id}       â”‚                         â”‚
-   â”‚                            â”‚     GET /api/commands   â”‚
-   â”‚                            â”‚ â—„â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€  â”‚
-   â”‚                            â”‚     [cmd1, cmd2, ...]   â”‚
-   â”‚                            â”‚ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–º  â”‚
-   â”‚                            â”‚                         â”‚
-   â”‚                            â”‚                   cmd.status = 'sent'
-   â”‚                            â”‚                         â”‚
-   â”‚                            â”‚                    EXECUTE IN
-   â”‚                            â”‚                    ROBLOX STUDIO
-   â”‚                            â”‚                         â”‚
-   â”‚                            â”‚   POST /commands/:id/   â”‚
-   â”‚                            â”‚   result                â”‚
-   â”‚                            â”‚ â—„â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€  â”‚
-   â”‚                            â”‚   {success, result}     â”‚
-   â”‚                            â”‚                         â”‚
-   â”‚  _waitForCommands([id])    â”‚                         â”‚
-   â”‚  (polls every 500ms)       â”‚                         â”‚
-   â”‚  status = completed âœ“      â”‚                         â”‚
-   â”‚ â—„â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ â”‚                         â”‚
+   │                            │                         │
+   │  enqueue(type, payload)    │                         │
+   │ ─────────────────────────► │                         │
+   │         returns {id}       │                         │
+   │                            │     GET /api/commands   │
+   │                            │ ◄─────────────────────  │
+   │                            │     [cmd1, cmd2, ...]   │
+   │                            │ ─────────────────────►  │
+   │                            │                         │
+   │                            │                   cmd.status = 'sent'
+   │                            │                         │
+   │                            │                    EXECUTE IN
+   │                            │                    ROBLOX STUDIO
+   │                            │                         │
+   │                            │   POST /commands/:id/   │
+   │                            │   result                │
+   │                            │ ◄─────────────────────  │
+   │                            │   {success, result}     │
+   │                            │                         │
+   │  _waitForCommands([id])    │                         │
+   │  (polls every 500ms)       │                         │
+   │  status = completed ✓      │                         │
+   │ ◄───────────────────────── │                         │
 ```
 
 ### Command Queue States
 
 ```
-pending â†’ sent â†’ completed
-                â†’ failed
+pending → sent → completed
+                → failed
 ```
 
 - **pending**: Queued, waiting for plugin to poll
@@ -644,13 +644,13 @@ pending â†’ sent â†’ completed
 
 API keys can be provided in two ways:
 1. **Server-side** (`bridge-server/.env`): Admin keys, used by default
-2. **Client-side** (Settings page â†’ localStorage): User keys, sent with each request and override server keys
+2. **Client-side** (Settings page → localStorage): User keys, sent with each request and override server keys
 
 ```
-User's key (from request) â†’ used if present
-         â†“ fallback
-Server .env key â†’ used if present
-         â†“ fallback
+User's key (from request) → used if present
+         ↓ fallback
+Server .env key → used if present
+         ↓ fallback
 Error: "API key not configured"
 ```
 
@@ -684,13 +684,13 @@ Every placed object is tracked in a spatial map with position and size. When pla
          Ring 3
       Ring 2
     Ring 1
-      â—  â† intended position (collision!)
-    Ring 1: 8 positions at 45Â° intervals, 8 studs out
-    Ring 2: 8 positions at 45Â° intervals, 16 studs out
-    Ring 3: 8 positions at 45Â° intervals, 24 studs out
+      ●  ← intended position (collision!)
+    Ring 1: 8 positions at 45° intervals, 8 studs out
+    Ring 2: 8 positions at 45° intervals, 16 studs out
+    Ring 3: 8 positions at 45° intervals, 24 studs out
     ...up to Ring 10 (80 studs out)
 
-    Total: 10 rings Ã— 8 directions = 80 candidate positions
+    Total: 10 rings × 8 directions = 80 candidate positions
     First collision-free spot wins.
 ```
 
@@ -698,7 +698,7 @@ Every placed object is tracked in a spatial map with position and size. When pla
 If all 80 spiral positions are occupied, falls back to a grid search across the full build area.
 
 ### Coverage Analysis (`analyzeCoverage()`)
-Divides the world into a **4Ã—4 grid** of zones and counts objects by type:
+Divides the world into a **4×4 grid** of zones and counts objects by type:
 - **Categories**: buildings, vehicles, trees, lights, props
 - **Per zone**: object count, type breakdown
 - **Output**: identifies empty zones, sparse zones, and generates a `coverageReport` string for the LLM
@@ -711,29 +711,29 @@ After the initial build completes, the runtime automatically runs a **densify pa
 
 ```
 Initial Build Complete
-        â”‚
-        â–¼
-  analyzeCoverage() â†’ 4Ã—4 grid analysis
-        â”‚
+        │
+        ▼
+  analyzeCoverage() → 4×4 grid analysis
+        │
   Check thresholds:
-    â”œâ”€ 2+ empty zones?
-    â”œâ”€ < 8 trees?
-    â”œâ”€ < 4 vehicles?
-    â”œâ”€ < 5 lights?
-    â””â”€ < 6 props?
-        â”‚
+    ├─ 2+ empty zones?
+    ├─ < 8 trees?
+    ├─ < 4 vehicles?
+    ├─ < 5 lights?
+    └─ < 6 props?
+        │
   If any threshold unmet:
-        â”‚
-        â–¼
+        │
+        ▼
   LLM call with DENSIFY_PROMPT
   + empty zone coordinates
   + current object counts
-        â”‚
-        â–¼
+        │
+        ▼
   Generate fill steps
   (target specific empty zones)
-        â”‚
-        â–¼
+        │
+        ▼
   Pre-resolve fill assets
   Execute fill steps
 ```
@@ -754,14 +754,14 @@ Initial Build Complete
 
 ```
 Plugin exports state          Bridge route                StateManager
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-POST /api/project-state  â”€â”€â–º  bridge.js receives   â”€â”€â–º  stateManager.updateProjectState()
+─────────────────────────────────────────────────────────────────────
+POST /api/project-state  ──►  bridge.js receives   ──►  stateManager.updateProjectState()
                               projectState = body         Traverses tree, bumps versions
                               agentPool.updateProjectState()
                                                           Runtime reads via:
-                                                          â€¢ _getWorkspaceChildNames()
-                                                          â€¢ _verifyInstanceExists()
-                                                          â€¢ CodeAnalyzer (Symbol Map)
+                                                          • _getWorkspaceChildNames()
+                                                          • _verifyInstanceExists()
+                                                          • CodeAnalyzer (Symbol Map)
 ```
 
 ### Symbol Map Generation
@@ -796,22 +796,22 @@ Every instance/script gets a version number. When a script source changes, the v
 
 | Method | Endpoint | Description | Request Body | Response |
 |--------|----------|-------------|-------------|----------|
-| `GET` | `/api/agents` | List all agents | â€” | `{ agents: [...] }` |
+| `GET` | `/api/agents` | List all agents | — | `{ agents: [...] }` |
 | `POST` | `/api/agents` | Create agent | `{ name }` | `{ id, name, status }` |
-| `GET` | `/api/agents/:id` | Get agent details | â€” | `{ id, status, plan, progress, ... }` |
-| `DELETE` | `/api/agents/:id` | Delete agent | â€” | `{ success: true }` |
+| `GET` | `/api/agents/:id` | Get agent details | — | `{ id, status, plan, progress, ... }` |
+| `DELETE` | `/api/agents/:id` | Delete agent | — | `{ success: true }` |
 | `POST` | `/api/agents/:id/prompt` | Start build | `{ prompt, modelId, apiKeys? }` | `{ status, plan }` |
-| `GET` | `/api/agents/:id/plan` | Get current plan | â€” | `{ plan, status }` |
-| `POST` | `/api/agents/:id/plan/approve` | Approve plan | â€” | `{ status: "executing" }` |
+| `GET` | `/api/agents/:id/plan` | Get current plan | — | `{ plan, status }` |
+| `POST` | `/api/agents/:id/plan/approve` | Approve plan | — | `{ status: "executing" }` |
 | `POST` | `/api/agents/:id/plan/update-positions` | Update step positions from canvas | `{ positions: [{id, position}] }` | `{ success: true }` |
-| `POST` | `/api/agents/:id/plan/confirm-layout` | Confirm canvas layout, start execution | â€” | `{ status: "executing" }` |
-| `POST` | `/api/agents/:id/plan/reposition` | LLM reposition agent optimizes layout | â€” | `{ success, repositioned, steps }` |
+| `POST` | `/api/agents/:id/plan/confirm-layout` | Confirm canvas layout, start execution | — | `{ status: "executing" }` |
+| `POST` | `/api/agents/:id/plan/reposition` | LLM reposition agent optimizes layout | — | `{ success, repositioned, steps }` |
 | `GET` | `/api/agents/:id/activity` | Get activity log | `?limit=50` | `{ activity: [...] }` |
-| `POST` | `/api/agents/:id/pause` | Pause execution | â€” | `{ status: "paused" }` |
-| `POST` | `/api/agents/:id/resume` | Resume execution | â€” | `{ status: "executing" }` |
-| `POST` | `/api/agents/:id/stop` | Stop agent | â€” | `{ status: "idle" }` |
+| `POST` | `/api/agents/:id/pause` | Pause execution | — | `{ status: "paused" }` |
+| `POST` | `/api/agents/:id/resume` | Resume execution | — | `{ status: "executing" }` |
+| `POST` | `/api/agents/:id/stop` | Stop agent | — | `{ status: "idle" }` |
 
-### Bridge Endpoints (Plugin â†” Server)
+### Bridge Endpoints (Plugin ↔ Server)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -837,73 +837,73 @@ Every instance/script gets a version number. When a script source changes, the v
 
 ```
 roblox-ai-builder/
-â”‚
-â”œâ”€â”€ README.md                        â† This file
-â”œâ”€â”€ package.json                     â† Workspace root (npm workspaces)
-â”œâ”€â”€ start.bat                        â† Windows startup script
-â”‚
-â”œâ”€â”€ bridge-server/                   â† Express.js backend (port 3456)
-â”‚   â”œâ”€â”€ package.json
-â”‚   â”œâ”€â”€ src/
-â”‚   â”‚   â”œâ”€â”€ index.js                 â† App init, middleware, route mounting
-â”‚   â”‚   â”œâ”€â”€ config.js                â† All configuration (providers, paths, costs)
-â”‚   â”‚   â”‚
-â”‚   â”‚   â”œâ”€â”€ agent/
-â”‚   â”‚   â”‚   â”œâ”€â”€ runtime.js           â† â˜… CORE: 3-phase agent pipeline + canvas layout + densify
-â”‚   â”‚   â”‚   â”œâ”€â”€ agentPool.js         â† Agent creation + registry
-â”‚   â”‚   â”‚   â”œâ”€â”€ providers.js         â† 8 LLM providers, unified chat() interface
-â”‚   â”‚   â”‚   â”œâ”€â”€ stateManager.js      â† Central project state + version tracking
-â”‚   â”‚   â”‚   â”œâ”€â”€ codeAnalyzer.js      â† Project â†’ Symbol Map for LLM context
-â”‚   â”‚   â”‚   â”œâ”€â”€ placementEngine.js   â† Smart placement (AABB collision, spiral search, coverage analysis)
-â”‚   â”‚   â”‚   â”œâ”€â”€ assetCatalog.js      â† Roblox Toolbox API search (category 10 = Models)
-â”‚   â”‚   â”‚   â”œâ”€â”€ validator.js         â† Command validation + auto-repair
-â”‚   â”‚   â”‚   â”œâ”€â”€ lockManager.js       â† Multi-agent workspace locking
-â”‚   â”‚   â”‚   â””â”€â”€ memory.js            â† Conversation, plan, snapshots persistence
-â”‚   â”‚   â”‚
-â”‚   â”‚   â”œâ”€â”€ prompts/
-â”‚   â”‚   â”‚   â””â”€â”€ system.js            â† LLM prompts + Roblox knowledge base
-â”‚   â”‚   â”‚                              (materials, classes, colors, patterns, scale)
-â”‚   â”‚   â”‚
-â”‚   â”‚   â”œâ”€â”€ queue/
-â”‚   â”‚   â”‚   â””â”€â”€ commandQueue.js      â† FIFO command queue (pendingâ†’sentâ†’completed)
-â”‚   â”‚   â”‚
-â”‚   â”‚   â””â”€â”€ routes/
-â”‚   â”‚       â”œâ”€â”€ agent.js             â† Agent CRUD + control endpoints
-â”‚   â”‚       â”œâ”€â”€ bridge.js            â† Plugin communication endpoints
-â”‚   â”‚       â”œâ”€â”€ assets.js            â† File upload (multer, 50MB limit)
-â”‚   â”‚       â””â”€â”€ models.js            â† List available LLM models
-â”‚   â”‚
-â”‚   â””â”€â”€ data/
-â”‚       â”œâ”€â”€ assetDatabase.json       â† Local asset metadata cache
-â”‚       â”œâ”€â”€ sessions/                â† Agent memory persistence (per-session JSON)
-â”‚       â”œâ”€â”€ uploads/                 â† User-uploaded files
-â”‚       â””â”€â”€ vector_db/              â† Vector search index
-â”‚
-â”œâ”€â”€ web-app/                         â† Next.js 16 frontend (port 3000)
-â”‚   â”œâ”€â”€ package.json
-â”‚   â”œâ”€â”€ next.config.ts
-â”‚   â”œâ”€â”€ tsconfig.json
-â”‚   â””â”€â”€ src/
-â”‚       â”œâ”€â”€ app/
-â”‚       â”‚   â”œâ”€â”€ layout.tsx           â† Root layout with sidebar + theme
-â”‚       â”‚   â”œâ”€â”€ page.tsx             â† Landing page
-â”‚       â”‚   â”œâ”€â”€ builder/
-â”‚       â”‚   â”‚   â”œâ”€â”€ page.tsx         â† â˜… Main builder (4-panel workspace)
-â”‚       â”‚   â”‚   â””â”€â”€ builder.module.css
-â”‚       â”‚   â””â”€â”€ settings/
-â”‚       â”‚       â”œâ”€â”€ page.tsx         â† API key management page
-â”‚       â”‚       â””â”€â”€ settings.module.css
-â”‚       â”œâ”€â”€ components/
-â”‚       â”‚   â”œâ”€â”€ Sidebar.tsx          â† Navigation sidebar
-â”‚       â”‚   â”œâ”€â”€ ThemeProvider.tsx     â† Dark/light theme toggle
-â”‚       â”‚   â””â”€â”€ MainContentAdjuster.tsx
-â”‚       â”œâ”€â”€ contexts/
-â”‚       â”‚   â””â”€â”€ SidebarContext.tsx    â† Sidebar state management
-â”‚       â””â”€â”€ lib/
-â”‚           â””â”€â”€ api.ts               â† API client (all fetch calls)
-â”‚
-â””â”€â”€ roblox-plugin/                   â† Roblox Studio plugin
-    â””â”€â”€ AIBuilder.lua                â† Command executor + compact state serializer
+│
+├── README.md                        ← This file
+├── package.json                     ← Workspace root (npm workspaces)
+├── start.bat                        ← Windows startup script
+│
+├── bridge-server/                   ← Express.js backend (port 3456)
+│   ├── package.json
+│   ├── src/
+│   │   ├── index.js                 ← App init, middleware, route mounting
+│   │   ├── config.js                ← All configuration (providers, paths, costs)
+│   │   │
+│   │   ├── agent/
+│   │   │   ├── runtime.js           ← ★ CORE: 3-phase agent pipeline + canvas layout + densify
+│   │   │   ├── agentPool.js         ← Agent creation + registry
+│   │   │   ├── providers.js         ← 8 LLM providers, unified chat() interface
+│   │   │   ├── stateManager.js      ← Central project state + version tracking
+│   │   │   ├── codeAnalyzer.js      ← Project → Symbol Map for LLM context
+│   │   │   ├── placementEngine.js   ← Smart placement (AABB collision, spiral search, coverage analysis)
+│   │   │   ├── assetCatalog.js      ← Roblox Toolbox API search (category 10 = Models)
+│   │   │   ├── validator.js         ← Command validation + auto-repair
+│   │   │   ├── lockManager.js       ← Multi-agent workspace locking
+│   │   │   └── memory.js            ← Conversation, plan, snapshots persistence
+│   │   │
+│   │   ├── prompts/
+│   │   │   └── system.js            ← LLM prompts + Roblox knowledge base
+│   │   │                              (materials, classes, colors, patterns, scale)
+│   │   │
+│   │   ├── queue/
+│   │   │   └── commandQueue.js      ← FIFO command queue (pending→sent→completed)
+│   │   │
+│   │   └── routes/
+│   │       ├── agent.js             ← Agent CRUD + control endpoints
+│   │       ├── bridge.js            ← Plugin communication endpoints
+│   │       ├── assets.js            ← File upload (multer, 50MB limit)
+│   │       └── models.js            ← List available LLM models
+│   │
+│   └── data/
+│       ├── assetDatabase.json       ← Local asset metadata cache
+│       ├── sessions/                ← Agent memory persistence (per-session JSON)
+│       ├── uploads/                 ← User-uploaded files
+│       └── vector_db/              ← Vector search index
+│
+├── web-app/                         ← Next.js 16 frontend (port 3000)
+│   ├── package.json
+│   ├── next.config.ts
+│   ├── tsconfig.json
+│   └── src/
+│       ├── app/
+│       │   ├── layout.tsx           ← Root layout with sidebar + theme
+│       │   ├── page.tsx             ← Landing page
+│       │   ├── builder/
+│       │   │   ├── page.tsx         ← ★ Main builder (4-panel workspace)
+│       │   │   └── builder.module.css
+│       │   └── settings/
+│       │       ├── page.tsx         ← API key management page
+│       │       └── settings.module.css
+│       ├── components/
+│       │   ├── Sidebar.tsx          ← Navigation sidebar
+│       │   ├── ThemeProvider.tsx     ← Dark/light theme toggle
+│       │   └── MainContentAdjuster.tsx
+│       ├── contexts/
+│       │   └── SidebarContext.tsx    ← Sidebar state management
+│       └── lib/
+│           └── api.ts               ← API client (all fetch calls)
+│
+└── roblox-plugin/                   ← Roblox Studio plugin
+    └── AIBuilder.lua                ← Command executor + compact state serializer
                                        (13 command handlers, fuzzy path resolver,
                                         smart property setter, auto-ground correction,
                                         recursive UI builder)
@@ -915,8 +915,8 @@ roblox-ai-builder/
 
 ### Prerequisites
 
-- **Node.js** 18+ â€” [nodejs.org](https://nodejs.org)
-- **Roblox Studio** â€” [roblox.com/create](https://roblox.com/create)
+- **Node.js** 18+ — [nodejs.org](https://nodejs.org)
+- **Roblox Studio** — [roblox.com/create](https://roblox.com/create)
 - At least one LLM API key (Anthropic, OpenAI, Google, etc.)
 
 ### 1. Install Dependencies
@@ -957,7 +957,7 @@ Copy `roblox-plugin/AIBuilder.lua` to your Roblox Studio Plugins folder:
 ### 4. Enable HTTP Requests in Studio
 
 1. Open Roblox Studio
-2. Game Settings â†’ Security â†’ **Allow HTTP Requests** â†’ ON
+2. Game Settings → Security → **Allow HTTP Requests** → ON
 
 ### 5. Start Everything
 
@@ -980,7 +980,7 @@ npm run dev
 3. Go to the **Builder** page
 4. Select an AI model from the dropdown
 5. Type a prompt: *"Build a medieval castle with a moat, drawbridge, and guard towers"*
-6. Review the plan â†’ Click **"Approve & Execute"**
+6. Review the plan → Click **"Approve & Execute"**
 7. Watch assets appear in Roblox Studio in real-time!
 
 ---
@@ -991,7 +991,7 @@ npm run dev
 
 | Variable | Provider | Description |
 |----------|----------|-------------|
-| `BRIDGE_PORT` | â€” | Server port (default: 3456) |
+| `BRIDGE_PORT` | — | Server port (default: 3456) |
 | `ANTHROPIC_API_KEY` | Anthropic | Claude models |
 | `OPENAI_API_KEY` | OpenAI | GPT models |
 | `GOOGLE_API_KEY` | Google | Gemini models |
@@ -1014,7 +1014,7 @@ npm run dev
 
 ## Supported AI Models
 
-### Tier 1 â€” Best Quality
+### Tier 1 — Best Quality
 
 | Model | Provider | Cost/1k tokens |
 |-------|----------|---------------|
@@ -1022,7 +1022,7 @@ npm run dev
 | GPT-5.4 Pro | OpenAI | $0.060 |
 | Gemini 3.1 Pro | Google | $0.035 |
 
-### Tier 2 â€” Balanced
+### Tier 2 — Balanced
 
 | Model | Provider | Cost/1k tokens |
 |-------|----------|---------------|
@@ -1031,7 +1031,7 @@ npm run dev
 | Mistral Large | Mistral | $0.002 |
 | Pixtral Large | Mistral | $0.002 |
 
-### Tier 3 â€” Fast & Cheap
+### Tier 3 — Fast & Cheap
 
 | Model | Provider | Cost/1k tokens |
 |-------|----------|---------------|
@@ -1040,7 +1040,7 @@ npm run dev
 | Gemini 3 Flash | Google | $0.005 |
 | Groq Llama 3.3 70B | Groq | $0.0006 |
 
-### Tier 4 â€” Free / Self-Hosted
+### Tier 4 — Free / Self-Hosted
 
 | Model | Provider | Cost |
 |-------|----------|------|
@@ -1055,23 +1055,23 @@ npm run dev
 
 | Feature | Description |
 |---------|-------------|
-| **3-Phase AI Pipeline** | Plan summary â†’ user approval â†’ canvas preview â†’ deterministic execution |
+| **3-Phase AI Pipeline** | Plan summary → user approval → canvas preview → deterministic execution |
 | **Visual Canvas Layout** | Full-screen top-down 2D map with draggable assets; positions map 1:1 to Roblox studs; shows ALL positionable steps (parts + models) |
 | **Smart Placement Engine** | AABB collision detection (8-stud padding), 80-position spiral search, grid fallback |
-| **5-Phase Model Insertion** | Insert â†’ GetBounds â†’ ComputePlacement â†’ Move (auto-ground correct) â†’ Track |
-| **Densify Pass** | Post-build 4Ã—4 grid coverage analysis; auto-fills empty zones to meet density targets |
+| **5-Phase Model Insertion** | Insert → GetBounds → ComputePlacement → Move (auto-ground correct) → Track |
+| **Densify Pass** | Post-build 4×4 grid coverage analysis; auto-fills empty zones to meet density targets |
 | **Compact State Serialization** | Models skip geometry children (~90% payload reduction); export retry on failure |
-| **Reposition Agent** | LLM-powered layout optimizer on canvas â€” re-zones, re-spaces, and re-aligns all assets for best spatial layout |
+| **Reposition Agent** | LLM-powered layout optimizer on canvas — re-zones, re-spaces, and re-aligns all assets for best spatial layout |
 | **Repair Mode (Fix Existing Game)** | Prompts like "fix/repair/improve existing game" trigger targeted repair planning instead of rebuilding from scratch |
 | **Auto-Ground Coverage** | Detects if assets are placed outside existing baseplates and auto-creates ground to cover the build area |
 | **Toolbox Terrain Cleanup** | Removes embedded terrain/grass/baseplate parts that come inside some free models to prevent floating islands |
 | **Oversize Model Normalization** | Automatically scales down extremely large inserted models to keep worlds coherent |
 | **Multi-Prompt Awareness** | Second prompts in the same thread auto-create new baseplates/ground when building in a new area (e.g. racing track next to a city) |
-| **Asset Pre-Resolution** | All searchQuery â†’ assetId resolved upfront via Roblox Toolbox API before execution |
+| **Asset Pre-Resolution** | All searchQuery → assetId resolved upfront via Roblox Toolbox API before execution |
 | **10 Action Types** | create_part, insert_model, create_instance, set_lighting, create_effect, create_ui, insert_script, clone_instance, delete_instance, set_properties |
 | **8 LLM Providers** | Anthropic, OpenAI, Google, Mistral, Groq, AWS Bedrock, HuggingFace, Ollama |
 | **20+ AI Models** | From Claude Opus 4.6 to free local Ollama models |
-| **Auto-Ground Correction** | move_instance auto-corrects pivotâ‰ center offset so models sit exactly on ground |
+| **Auto-Ground Correction** | move_instance auto-corrects pivot≠center offset so models sit exactly on ground |
 | **Roblox Knowledge Base** | 50+ instance classes, 40+ materials, lighting/atmosphere, game patterns |
 | **Auto-Verification** | Verifies each placed instance exists in Explorer after placement |
 | **LLM Retry** | If a step fails, LLM is called with error + Symbol Map (max 2 retries) |
@@ -1101,7 +1101,7 @@ npm run dev
 | "Bridge Disconnected" in web app | Bridge server not running | Run `cd bridge-server && npm start` |
 | "Studio Disconnected" | Plugin not connected or heartbeat stale | Click "Connect" in Studio's AI Builder toolbar |
 | "API key not configured" | No key for selected provider | Add key to `.env` or Settings page |
-| "Allow HTTP Requests" error in Studio | Studio security blocks HTTP | Game Settings â†’ Security â†’ Allow HTTP Requests â†’ ON |
+| "Allow HTTP Requests" error in Studio | Studio security blocks HTTP | Game Settings → Security → Allow HTTP Requests → ON |
 | Floating green islands under inserted models | Free Toolbox model includes embedded terrain/baseplate | Update to latest plugin; insertion now auto-strips terrain-like child parts |
 | Existing world gets rebuilt when prompt says "fix" | Planning treated request as new build | Use latest bridge server; fix/repair prompts now run in repair mode and target only broken/misplaced content |
 | Model insertion finds no new instance | Plugin couldn't download model | Check Roblox catalog availability, try different searchQuery |
@@ -1115,3 +1115,4 @@ npm run dev
 ## License
 
 Private project. All rights reserved.
+
