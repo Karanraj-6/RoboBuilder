@@ -489,37 +489,37 @@ Uses fuzzy matching: exact match → `Name__ordinal` convention → case-insensi
                              error (on any unrecoverable failure)
 ```
 
-### Insert Model \u2014 5-Phase Smart Insertion Pipeline
+### Insert Model — 5-Phase Smart Insertion Pipeline
 
 The most complex operation is `insert_model`. It uses a 5-phase pipeline:
 
 ```
-1. Snapshot: beforeNames = [\"Baseplate\", \"Ground\", \"Road\"]
+1. Snapshot: beforeNames = ["Baseplate", "Ground", "Road"]
 
 2. Send insert_free_model command to plugin (resolved assetId from Toolbox API)
 
-3. Plugin downloads model \u2192 parents to Workspace
+3. Plugin downloads model → parents to Workspace
 
-4. Send export_state \u2192 wait for compact state (model skips geometry children)
+4. Send export_state → wait for compact state (model skips geometry children)
 
-5. Snapshot: afterNames = [\"Baseplate\", \"Ground\", \"Road\", \"Victorian House\"]
+5. Snapshot: afterNames = ["Baseplate", "Ground", "Road", "Victorian House"]
 
-6. Diff: newName = \"Victorian House\" \u2190 the model's real name
+6. Diff: newName = "Victorian House" ← the model's real name
 
 7. PlacementEngine.computePlacement():
-   \u2022 AABB collision detection against ALL placed objects (8-stud padding)
-   \u2022 If collision at intended spot \u2192 spiral search (10 rings \u00d7 45\u00b0 = 80 positions)
-   \u2022 If all spiral spots fail \u2192 grid fallback
-   \u2022 Returns final collision-free [X, Y, Z] position
+   • AABB collision detection against ALL placed objects (8-stud padding)
+   • If collision at intended spot → spiral search (10 rings × 45° = 80 positions)
+   • If all spiral spots fail → grid fallback
+   • Returns final collision-free [X, Y, Z] position
 
-8. Send move_instance to \"Workspace.Victorian House\" with computed position
-   \u2022 Plugin does PivotTo(position)
-   \u2022 Auto-ground correction: reads bbox center, computes pivot\u2260center offset
-   \u2022 Re-PivotTos to correct Y so bottom sits exactly on ground
+8. Send move_instance to "Workspace.Victorian House" with computed position
+   • Plugin does PivotTo(position)
+   • Auto-ground correction: reads bbox center, computes pivot≠center offset
+   • Re-PivotTos to correct Y so bottom sits exactly on ground
 
 9. Track placement in spatial map for future collision avoidance
 
-10. Verify \"Victorian House\" exists in Explorer state
+10. Verify "Victorian House" exists in Explorer state
 ```
 
 ---
@@ -529,30 +529,30 @@ The most complex operation is `insert_model`. It uses a 5-phase pipeline:
 After Phase 2 generates the detailed plan (with positions for every asset), the system pauses at `awaiting_layout` status and the frontend shows a **full-screen canvas layout preview**:
 
 ```
-\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510
-\u2502  Layout Preview \u2014 Build Plan Title           [Side Panel] \u2502
-\u2502  Drag assets to reposition. Scroll to zoom.   \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510 \u2502
-\u2502  \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510  \u2502Selected\u2502 \u2502
-\u2502  \u2502    X:-256              0            +256 \u2502  \u2502 \ud83c\udfe2 Tower\u2502 \u2502
-\u2502  \u2502   \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510                              \u2502  \u2502 X:60    \u2502 \u2502
-\u2502  \u2502   \u2502\ud83c\udfe2 Tower \u2502     \ud83c\udf33          \ud83c\udf33       \u2502  \u2502 Z:120   \u2502 \u2502
-\u2502  \u2502   \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518                              \u2502  \u2502 Size:   \u2502 \u2502
-\u2502  \u2502              \ud83d\ude97  \u250c\u2500\u2500\u2500\u2500\u2510    \ud83d\ude97           \u2502  \u2502 30\u00d780\u00d730\u2502 \u2502
-\u2502  \u2502                 \u2502Road\u2502                  \u2502  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518 \u2502
-\u2502  \u2502      \ud83c\udf33        \u2514\u2500\u2500\u2500\u2500\u2518       \ud83d\udca1        \u2502  \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510 \u2502
-\u2502  \u2502                                         \u2502  \u2502All Stp.\u2502 \u2502
-\u2502  \u2502     \ud83d\ude97       \ud83c\udfe2          \ud83d\ude97              \u2502  \u2502\u25cf Tower \u2502 \u2502
-\u2502  \u2502                                         \u2502  \u2502\u25cf Tree  \u2502 \u2502
-\u2502  \u2502   \ud83c\udf33   \ud83d\udca1          \ud83c\udf33        \ud83c\udf33       \u2502  \u2502\u25cf Car   \u2502 \u2502
-\u2502  \u2502                                         \u2502  \u2502\u25cf Road  \u2502 \u2502
-\u2502  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518  \u2502\u25cf Light \u2502 \u2502
-\u2502  Legend: \u25a0 create_part \u25a0 insert_model ...    \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518 \u2502
-\u2502                                                          \u2502
+┌────────────────────────────────────────────────────────────────┐
+│  Layout Preview — Build Plan Title           [Side Panel] │
+│  Drag assets to reposition. Scroll to zoom.   ┌────────┐ │
+│  ┌───────────────────────────────────────┐  │Selected│ │
+│  │    X:-256              0            +256 │  │ 🏢 Tower│ │
+│  │   ┌────────┐                              │  │ X:60    │ │
+│  │   │🏢 Tower │     🌳          🌳       │  │ Z:120   │ │
+│  │   └────────┘                              │  │ Size:   │ │
+│  │              🚗  ┌────┐    🚗           │  │ 30×80×30│ │
+│  │                 │Road│                  │  └────────┘ │
+│  │      🌳        └────┘       💡        │  ┌────────┐ │
+│  │                                         │  │All Stp.│ │
+│  │     🚗       🏢          🚗              │  │● Tower │ │
+│  │                                         │  │● Tree  │ │
+│  │   🌳   💡          🌳        🌳       │  │● Car   │ │
+│  │                                         │  │● Road  │ │
+│  └───────────────────────────────────────┘  │● Light │ │
+│  Legend: ■ create_part ■ insert_model ...    └────────┘ │
+│                                                          │
 │  [Reposition Agent]  [Confirm & Execute]  [Skip]    │
-\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518
+└────────────────────────────────────────────────────────────────┘
 ```
 
-### How Canvas \u2192 Studio Position Mapping Works
+### How Canvas → Studio Position Mapping Works
 
 Canvas pixel coordinates are mathematically converted to real Roblox studs:
 
@@ -563,7 +563,7 @@ studZ = ((pixelY / canvasHeight) * 512) - 256;
 studY = unchanged;    // preserved from LLM plan (ground level)
 ```
 
-When the user drags a box on the canvas, the new pixel position is converted to studs and stored in the step. When \"Confirm Layout & Execute\" is clicked:
+When the user drags a box on the canvas, the new pixel position is converted to studs and stored in the step. When "Confirm Layout & Execute" is clicked:
 1. Updated positions are sent to the bridge via `POST /api/agents/:id/plan/update-positions`
 2. `POST /api/agents/:id/plan/confirm-layout` triggers Phase 3 execution
 3. The runtime uses the user-edited positions for every `set_properties` and `move_instance` call
@@ -571,7 +571,7 @@ When the user drags a box on the canvas, the new pixel position is converted to 
 
 ### Canvas Features
 - **Color-coded assets**: Each action type has a distinct color (blue = parts, yellow = models, purple = instances, etc.)
-- **Category icons**: Trees (\ud83c\udf33), cars (\ud83d\ude97), buildings (\ud83c\udfe2), lights (\ud83d\udca1) based on asset name
+- **Category icons**: Trees (🌳), cars (🚗), buildings (🏢), lights (💡) based on asset name
 - **Side panel**: Shows selected asset details (position, size, assetId) + full step list
 - **Zoom**: Mouse wheel to zoom in/out (0.3x to 5x)
 - **Grid**: 64-stud grid lines with origin crosshair
