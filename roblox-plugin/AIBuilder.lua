@@ -695,6 +695,81 @@ commandHandlers.get_bounds = function(payload)
   end
 end
 
+-- Collect ALL bounds from every Model/BasePart in Workspace (for post-placement correction)
+-- Returns a JSON array with name, path, position, size, and coverage area for every object
+commandHandlers.collect_all_bounds = function(payload)
+  local targetParent = payload and payload.parent and resolveParent(payload.parent) or workspace
+  if not targetParent then
+    return false, "Parent not found: " .. tostring(payload and payload.parent)
+  end
+
+  local results = {}
+  local function collectBounds(instance, parentPath)
+    for _, child in ipairs(instance:GetChildren()) do
+      if child:IsA("Model") or child:IsA("BasePart") then
+        local childPath = parentPath .. "." .. child.Name
+        local entry = nil
+
+        pcall(function()
+          if child:IsA("Model") then
+            local cf, sz = child:GetBoundingBox()
+            local pos = cf.Position
+            -- Calculate the ground footprint (X/Z coverage area)
+            local minX = pos.X - sz.X / 2
+            local maxX = pos.X + sz.X / 2
+            local minZ = pos.Z - sz.Z / 2
+            local maxZ = pos.Z + sz.Z / 2
+            entry = string.format(
+              '{"name":"%s","path":"%s","class":"Model","position":[%.1f,%.1f,%.1f],"size":[%.1f,%.1f,%.1f],"footprint":{"minX":%.1f,"maxX":%.1f,"minZ":%.1f,"maxZ":%.1f},"area":%.1f}',
+              child.Name, childPath,
+              pos.X, pos.Y, pos.Z,
+              sz.X, sz.Y, sz.Z,
+              minX, maxX, minZ, maxZ,
+              sz.X * sz.Z
+            )
+          elseif child:IsA("BasePart") then
+            local pos = child.Position
+            local sz = child.Size
+            local minX = pos.X - sz.X / 2
+            local maxX = pos.X + sz.X / 2
+            local minZ = pos.Z - sz.Z / 2
+            local maxZ = pos.Z + sz.Z / 2
+            entry = string.format(
+              '{"name":"%s","path":"%s","class":"%s","position":[%.1f,%.1f,%.1f],"size":[%.1f,%.1f,%.1f],"footprint":{"minX":%.1f,"maxX":%.1f,"minZ":%.1f,"maxZ":%.1f},"area":%.1f,"material":"%s"}',
+              child.Name, childPath, child.ClassName,
+              pos.X, pos.Y, pos.Z,
+              sz.X, sz.Y, sz.Z,
+              minX, maxX, minZ, maxZ,
+              sz.X * sz.Z,
+              child.Material.Name
+            )
+          end
+        end)
+
+        if entry then
+          table.insert(results, entry)
+        end
+
+        -- Recurse into non-Model children (don't go inside Models — we have their bounding box)
+        if not child:IsA("Model") then
+          collectBounds(child, childPath)
+        end
+      elseif child:IsA("Folder") then
+        collectBounds(child, parentPath .. "." .. child.Name)
+      end
+    end
+  end
+
+  local rootPath = "Workspace"
+  if targetParent ~= workspace then
+    rootPath = tostring(targetParent)
+  end
+  collectBounds(targetParent, rootPath)
+
+  local jsonArray = "[" .. table.concat(results, ",") .. "]"
+  return true, jsonArray
+end
+
 -- Move an instance to a new position (handles Models and BaseParts)
 commandHandlers.move_instance = function(payload)
   local instance = resolvePath(payload.path)

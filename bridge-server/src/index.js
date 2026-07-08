@@ -46,6 +46,22 @@ app.use('/api', bridgeRoutes);
 app.use('/api', assetRoutes);
 app.use('/api', modelRoutes);
 
+// ── Direct LLM chat endpoint (used by Canvas Preview AI chat panel) ──────────
+app.post('/api/llm-chat', async (req, res) => {
+    const { modelId, messages, apiKeys } = req.body;
+    if (!modelId || !Array.isArray(messages)) {
+        return res.status(400).json({ error: 'Missing modelId or messages' });
+    }
+    try {
+        const LLMProvider = require('./agent/providers');
+        const llm = new LLMProvider();
+        const result = await llm.chat(modelId, messages, { apiKeys });
+        res.json({ content: result.content, usage: result.usage });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // Health / status endpoint
 app.get('/api/status', (req, res) => {
     const plugin = req.getPluginStatus();

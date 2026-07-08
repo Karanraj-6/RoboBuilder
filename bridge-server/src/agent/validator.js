@@ -7,7 +7,8 @@ const VALID_COMMAND_TYPES = [
     'insert_script', 'patch_script', 'update_script',
     'create_ui', 'move_instance', 'reparent_instance', 'clone_instance', 'get_bounds',
     'generate_asset', 'import_user_asset', 'export_state',
-    'snapshot', 'rollback', 'batch', 'insert_free_model', 'fetch_explorer_state', 'search_catalog'
+    'snapshot', 'rollback', 'batch', 'insert_free_model', 'fetch_explorer_state', 'search_catalog',
+    'collect_all_bounds'
 ];
 
 const VALID_PARENTS = [

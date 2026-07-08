@@ -289,4 +289,5 @@ vite.config.ts.timestamp-*
 
 
 
-bridge-server/data/sessions
+bridge-server/data/sessions/
+bridge-server/failed_llm_output_debug.txt

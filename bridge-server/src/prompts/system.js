@@ -330,6 +330,7 @@ DO NOT cluster all objects in the center. Spread hints across the ENTIRE area:
 If most of your positions are between -80 and +80, you are CLUSTERING. FIX IT by spreading to -200, -140, 140, 200, etc.
 
 - Every insert_model MUST have a "position" array (approximate hint). NEVER omit position.
+- Every insert_model MUST also have a "size" array [W, H, D] — this is an ESTIMATE so the UI canvas preview can draw a box of roughly the right bounds before we fetch the actual 3D model. Be realistic (e.g. car [8,6,16], building [40,100,50], tree [10,20,10]).
 - searchQuery MUST be descriptive 1-3 words. NEVER use generic terms.
 - Roads: Size [24, 0.2, length]. Material "Asphalt". Color [80,80,80]. Y = 0.6.
 - EVERY road must have at LEAST 2 buildings along it (one on each side).
@@ -395,9 +396,9 @@ Respond EXACTLY with this JSON (no text before/after):
       "parent": "Workspace",
       "properties": { "Size": [24, 0.2, 200], "Position": [140, 0.6, 140], "Anchored": true, "Material": "Asphalt", "Color": [80, 80, 80] }
     },
-    { "id": 8, "action": "insert_model", "searchQuery": "skyscraper", "name": "Skyscraper_DT_1", "position": [-60, 0.5, -80] },
-    { "id": 9, "action": "insert_model", "searchQuery": "office building", "name": "Office_DT_1", "position": [60, 0.5, -80] },
-    { "id": 10, "action": "insert_model", "searchQuery": "apartment", "name": "Apt_NE_1", "position": [160, 0.5, -160] },
+    { "id": 8, "action": "insert_model", "searchQuery": "skyscraper", "name": "Skyscraper_DT_1", "position": [-60, 0.5, -80], "size": [40, 120, 40] },
+    { "id": 9, "action": "insert_model", "searchQuery": "office building", "name": "Office_DT_1", "position": [60, 0.5, -80], "size": [40, 80, 40] },
+    { "id": 10, "action": "insert_model", "searchQuery": "apartment", "name": "Apt_NE_1", "position": [160, 0.5, -160], "size": [30, 40, 30] },
     { "id": 11, "action": "insert_model", "searchQuery": "apartment", "name": "Apt_NE_2", "position": [160, 0.5, -80] },
     { "id": 12, "action": "insert_model", "searchQuery": "small house", "name": "House_NW_1", "position": [-160, 0.5, -160] },
     { "id": 13, "action": "insert_model", "searchQuery": "small house", "name": "House_NW_2", "position": [-160, 0.5, -80] },

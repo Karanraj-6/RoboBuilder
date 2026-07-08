@@ -73,6 +73,7 @@ class LLMProvider {
 
         const resp = await client.messages.create({
             model: modelId,
+            max_tokens: 8192,
             system: systemMsg?.content || '',
             messages: chatMsgs.map(m => ({
                 role: m.role === 'assistant' ? 'assistant' : 'user',
@@ -96,6 +97,7 @@ class LLMProvider {
 
         const resp = await client.chat.completions.create({
             model: modelId,
+            max_tokens: 16384,
             messages: messages.map(m => ({
                 role: m.role,
                 content: m.content
@@ -150,6 +152,7 @@ class LLMProvider {
 
         const chat = model.startChat({
             history,
+            generationConfig: { maxOutputTokens: 65536 },
             systemInstruction: systemMsg ? { parts: [{ text: systemMsg.content }] } : undefined
         });
 
@@ -189,7 +192,8 @@ class LLMProvider {
         try {
             const response = await hf.chatCompletion({
                 model: modelId,
-                messages: hfMessages
+                messages: hfMessages,
+                max_new_tokens: 8192
             });
 
             content = response.choices[0]?.message?.content || '';
@@ -217,6 +221,7 @@ class LLMProvider {
 
         const resp = await client.chat.complete({
             model: modelId,
+            max_tokens: 32768,
             messages: messages.map(m => ({
                 role: m.role,
                 content: m.content
@@ -238,6 +243,7 @@ class LLMProvider {
 
         const resp = await groq.chat.completions.create({
             model: modelId,
+            max_tokens: 32768,
             messages: messages.map(m => ({
                 role: m.role,
                 content: m.content
@@ -256,17 +262,17 @@ class LLMProvider {
     async _chatBedrock(modelId, apiKey, messages, options) {
         const conf = this.config.providers.bedrock;
         const region = options?.apiKeys?.awsRegion || conf.awsRegion || 'us-east-1';
-        const bearerToken = apiKey; 
+        const bearerToken = apiKey;
 
         if (!bearerToken) {
             throw new Error('AWS Bedrock API Key not configured.');
         }
 
         const systemMessages = messages.filter(m => m.role === 'system').map(m => ({ text: m.content }));
-        
+
         const conversationMessages = [];
         const filtered = messages.filter(m => m.role !== 'system');
-        
+
         for (const msg of filtered) {
             const role = msg.role === 'assistant' ? 'assistant' : 'user';
             if (conversationMessages.length > 0 && conversationMessages[conversationMessages.length - 1].role === role) {
@@ -289,7 +295,8 @@ class LLMProvider {
         const body = {
             messages: conversationMessages,
             inferenceConfig: {
-                maxTokens: 8192
+                maxTokens: 8192,
+                temperature: 0    // deterministic JSON output
             }
         };
         if (systemMessages.length > 0) {
@@ -316,7 +323,7 @@ class LLMProvider {
                 } else {
                     const status = response.status;
                     const errText = await response.text();
-                    
+
                     if (status === 429 || status >= 500) {
                         retries--;
                         if (retries === 0) throw new Error(`Bedrock API Error ${status}: ${errText}`);
@@ -380,7 +387,8 @@ class LLMProvider {
                     model: actualModelName,
                     messages: ollamaMessages,
                     stream: false,
-                    format: 'json'
+                    format: 'json',
+                    options: { num_predict: 32768 }
                 })
             });
 

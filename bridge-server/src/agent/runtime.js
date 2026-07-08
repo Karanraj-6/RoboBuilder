@@ -19,6 +19,9 @@ const CodeAnalyzer = require('./codeAnalyzer');
 const assetCatalog = require('./assetCatalog');
 const placementEngine = require('./placementEngine');
 
+const WorkerAgent = require('./workerAgent');
+const { DOMAIN_DECOMPOSITION_PROMPT, POST_PLACEMENT_CORRECTION_PROMPT } = require('../prompts/workers');
+
 class AgentRuntime {
     constructor(agentId, llmProvider, config) {
         this.id = agentId;
@@ -33,6 +36,7 @@ class AgentRuntime {
         this.error = null;
         this._running = false;
         this._currentStepIndex = 0;
+        this.workers = []; // Manage spawned workers
     }
 
     log(type, message, data = null) {
@@ -236,6 +240,10 @@ class AgentRuntime {
     }
 
     async _buildDetailedPlan() {
+        const fs = require('fs');
+        const path = require('path');
+        const MAX_ATTEMPTS = 2;
+
         try {
             // Get fresh explorer state
             const analyzer = new CodeAnalyzer(stateManager);
@@ -256,14 +264,46 @@ class AgentRuntime {
                 { role: 'user', content: `Create the detailed build plan for the approved project.\n\nCURRENT EXPLORER STATE:\n${symbolsContext}` }
             ];
 
-            const response = await this.llm.chat(this.modelId, messages, { apiKeys: this.apiKeys });
-            this.memory.trackTokens(response.usage.inputTokens, response.usage.outputTokens);
+            let lastResponse = null;
+            let detailedPlan = null;
 
-            const jsonStr = this._extractJsonFromResponse(response.content);
-            const detailedPlan = JSON.parse(jsonStr);
+            for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+                if (attempt > 1) {
+                    this.log('info', `Retrying detailed plan generation (attempt ${attempt}/${MAX_ATTEMPTS})...`);
+                    await new Promise(r => setTimeout(r, 2000));
+                }
 
-            if (!detailedPlan.steps || detailedPlan.steps.length === 0) {
-                throw new Error('LLM returned a plan with 0 steps');
+                const response = await this.llm.chat(this.modelId, messages, { apiKeys: this.apiKeys });
+                this.memory.trackTokens(response.usage.inputTokens, response.usage.outputTokens);
+                lastResponse = response;
+
+                try {
+                    const jsonStr = this._extractJsonFromResponse(response.content);
+                    detailedPlan = JSON.parse(jsonStr);
+                } catch (parseErr) {
+                    this.log('warning', `Attempt ${attempt}: Failed to parse plan JSON: ${parseErr.message}`);
+                    continue;
+                }
+
+                if (detailedPlan.steps && detailedPlan.steps.length > 0) {
+                    break; // success
+                }
+
+                this.log('warning', `Attempt ${attempt}: LLM returned 0 steps (tokens in/out: ${lastResponse.usage.inputTokens}/${lastResponse.usage.outputTokens}). ${attempt < MAX_ATTEMPTS ? 'Retrying...' : 'Giving up.'}`);
+
+                // Save raw output for debugging
+                try {
+                    const debugPath = path.join(__dirname, '..', '..', 'failed_llm_output_debug.txt');
+                    const debugContent = `Model: ${this.modelId}\nTokens in: ${lastResponse.usage.inputTokens} | out: ${lastResponse.usage.outputTokens}\nAttempt: ${attempt}\n\nRAW RESPONSE:\n${lastResponse.content}`;
+                    fs.writeFileSync(debugPath, debugContent, 'utf8');
+                } catch (e) { /* ignore file write errors */ }
+
+                detailedPlan = null; // reset for next attempt
+            }
+
+            if (!detailedPlan || !detailedPlan.steps || detailedPlan.steps.length === 0) {
+                const tokenInfo = lastResponse ? ` (model: ${this.modelId}, tokens out: ${lastResponse.usage.outputTokens})` : '';
+                throw new Error(`LLM returned a plan with 0 steps after ${MAX_ATTEMPTS} attempts${tokenInfo}. Raw output saved to failed_llm_output_debug.txt`);
             }
 
             this.currentPlan.steps = detailedPlan.steps;
@@ -290,17 +330,158 @@ class AgentRuntime {
             // Auto-create baseplate if steps are outside existing ground coverage
             await this._ensureGroundCoverage();
 
-            // Now execute deterministically
-            await this._executeLoop();
+            // Transform into master-worker architecture
+            await this._decomposeAndExecute();
+
+            // Post-placement correction pipeline
+            if (this._running && this.status !== 'error') {
+                await this._postPlacementCorrection();
+            }
 
             // After initial build: analyze coverage and fill empty areas
             if (this._running && this.status !== 'error') {
                 await this._densifyPass();
             }
+
+            if (this.status !== 'error') {
+               this.status = 'complete';
+               this.log('complete', `Build finished! ${this.currentPlan.steps.length} steps processed.`);
+            }
         } catch (e) {
             this.status = 'error';
             this.error = e.message;
             this.log('error', `Execution failed: ${e.message}`);
+        }
+    }
+
+    async _decomposeAndExecute() {
+        this.log('info', 'Decomposing plan into parallel domains...');
+        
+        // Build JSON representation of steps for LLM
+        const stepsDesc = this.currentPlan.steps.map(s => {
+            return {
+                id: s.id,
+                action: s.action,
+                name: s.name,
+                target: s.searchQuery || s.className || ''
+            };
+        });
+
+        const prompt = DOMAIN_DECOMPOSITION_PROMPT.replace('{{MASTER_PLAN}}', JSON.stringify(stepsDesc, null, 2));
+
+        try {
+            const response = await this.llm.chat(this.modelId, [
+                { role: 'system', content: prompt }
+            ], { apiKeys: this.apiKeys });
+
+            const jsonStr = this._extractJsonFromResponse(response.content);
+            const domains = JSON.parse(jsonStr);
+
+            if (!Array.isArray(domains) || domains.length === 0) {
+                throw new Error("No domains parsed");
+            }
+
+            this.log('info', `Created ${domains.length} workers: ${domains.map(d => d.name).join(', ')}`);
+
+            // Spawn workers
+            this.workers = domains.map(domain => {
+                const worker = new WorkerAgent(this.id, domain, this.modelId, this.apiKeys);
+                const assignedSteps = domain.steps.map(id => this.currentPlan.steps.find(s => s.id === id)).filter(Boolean);
+                worker.assignSteps(assignedSteps);
+                return worker;
+            });
+
+            // Execute all workers in parallel
+            const executionPromises = this.workers.map(worker => worker.execute((wId, stepNum, success) => {
+                const w = this.workers.find(wk => wk.id === wId);
+                const sName = w.domain.name;
+                this.log('info', `[Worker ${sName}] Step ${stepNum} ${success ? 'completed' : 'failed'}`);
+                this._currentStepIndex++; // Update total progress
+                
+                // Track spatial placement bounds from workers
+                w._spatialMap.forEach(pos => {
+                    this._trackPlacement(pos.name, pos.position, pos.size);
+                });
+                w._spatialMap = []; // Clear read ones
+            }));
+
+            await Promise.all(executionPromises);
+
+            this.log('info', 'All worker agents have completed their domains.');
+
+        } catch (e) {
+            this.log('warning', `Domain decomposition failed: ${e.message}. Falling back to sequential execution.`);
+            await this._executeLoop();
+        }
+    }
+
+    async _postPlacementCorrection() {
+        this.log('info', 'Starting Post-Placement Correction pipeline...');
+
+        // 1. Ask plugin to walk through all models in Workspace and get their EXACT bounds
+        const boundsCmd = commandQueue.enqueue(this.id, 'collect_all_bounds', { parent: 'Workspace' });
+        await this._waitForCommands([boundsCmd.id], 30000);
+        
+        const boundsResult = commandQueue.commands.get(boundsCmd.id);
+        if (boundsResult.status === 'failed' || !boundsResult.result) {
+            this.log('warning', 'Could not collect real bounds. Skipping correction pipeline.');
+            return;
+        }
+
+        let realBounds = [];
+        try {
+            realBounds = JSON.parse(boundsResult.result);
+        } catch (e) {
+            this.log('warning', 'Invalid JSON from collect_all_bounds. Skipping correction pipeline.');
+            return;
+        }
+
+        this.log('info', `Collected exact bounds for ${realBounds.length} objects from Roblox Studio.`);
+
+        // 2. Prepare context for LLM
+        const originalIntentDesc = this.currentPlan.steps.filter(s => s.action === 'insert_model' || s.action === 'create_part')
+            .map(s => {
+                const pos = s.position || (s.properties && s.properties.Position) || [0,0,0];
+                return { id: s.id, name: s.name, intentPos: pos };
+            });
+
+        const prompt = POST_PLACEMENT_CORRECTION_PROMPT
+            .replace('{{ORIGINAL_PLAN}}', JSON.stringify(originalIntentDesc, null, 2))
+            .replace('{{REAL_BOUNDS}}', JSON.stringify(realBounds, null, 2));
+
+        // 3. Ask LLM to adjust positions based on real sizes/footprints
+        try {
+            const response = await this.llm.chat(this.modelId, [
+                { role: 'system', content: prompt }
+            ], { apiKeys: this.apiKeys });
+
+            const jsonStr = this._extractJsonFromResponse(response.content);
+            const adjustments = JSON.parse(jsonStr);
+
+            if (!Array.isArray(adjustments) || adjustments.length === 0) {
+                this.log('info', 'Post-Placement Correction: LLM found no adjustments necessary.');
+                return;
+            }
+
+            this.log('info', `Applying ${adjustments.length} positional corrections...`);
+
+            // Apply them sequentially
+            for (const adj of adjustments) {
+                if (!adj.path || !adj.position) continue;
+                this.log('info', `Correcting position of ${adj.path} → [${adj.position.join(', ')}]`);
+                
+                const moveCmd = commandQueue.enqueue(this.id, 'move_instance', {
+                    path: adj.path,
+                    position: adj.position
+                });
+                await this._waitForCommands([moveCmd.id], 15000);
+            }
+
+            this.log('info', 'Post-Placement Correction pipeline complete.');
+            await this._refreshState();
+
+        } catch (e) {
+            this.log('warning', `Correction pipeline encountered an error: ${e.message}`);
         }
     }
 
@@ -1225,13 +1406,72 @@ class AgentRuntime {
     _extractJsonFromResponse(content) {
         if (!content) throw new Error('Empty response from LLM');
 
-        // 1. Try code-fenced JSON first
-        const fenceMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/i);
-        if (fenceMatch && fenceMatch[1]) {
-            return fenceMatch[1].trim();
+        // 1. Check if there are multiple code fences containing JSON
+        const fences = [];
+        const regex = /```(?:json)?\s*([\s\S]*?)```/gi;
+        let match;
+        while ((match = regex.exec(content)) !== null) {
+            if (match[1]) fences.push(match[1].trim());
         }
 
-        // 2. Find the outermost JSON structure (array or object)
+        if (fences.length > 1) {
+            // Check if one of the fences actually contains the entire plan
+            for (const fence of fences) {
+                if (fence.includes('"steps"') && (fence.includes('"title"') || fence.includes('"summary"'))) {
+                    return fence;
+                }
+            }
+
+            // Otherwise, see if they are a list of individual steps and assemble them
+            const assembledSteps = [];
+            let projectTitle = 'Roblox Project Build';
+            let projectSummary = 'Build constructed from individual step blocks';
+
+            const titleMatch = content.match(/Project Title:\s*([^\n]+)/i) || 
+                               content.match(/title["']?\s*:\s*["']([^"']+)["']/i) ||
+                               content.match(/title["']?\s*:\s*([^,}\n]+)/i);
+            if (titleMatch) {
+                projectTitle = titleMatch[1].replace(/["']/g, '').trim();
+            }
+
+            const summaryMatch = content.match(/Project Summary:\s*([^\n]+)/i) || 
+                                 content.match(/summary["']?\s*:\s*["']([^"']+)["']/i) ||
+                                 content.match(/summary["']?\s*:\s*([^,}\n]+)/i);
+            if (summaryMatch) {
+                projectSummary = summaryMatch[1].replace(/["']/g, '').trim();
+            }
+
+            for (const fence of fences) {
+                try {
+                    const parsed = JSON.parse(fence);
+                    if (parsed && (parsed.action || parsed.id !== undefined)) {
+                        if (Array.isArray(parsed)) {
+                            assembledSteps.push(...parsed);
+                        } else {
+                            assembledSteps.push(parsed);
+                        }
+                    }
+                } catch (e) {
+                    // Not a valid JSON step/array, ignore
+                }
+            }
+
+            if (assembledSteps.length > 0) {
+                // Return compiled structure
+                return JSON.stringify({
+                    title: projectTitle,
+                    summary: projectSummary,
+                    steps: assembledSteps
+                });
+            }
+        }
+
+        // 2. Try single code-fenced JSON
+        if (fences.length === 1) {
+            return fences[0];
+        }
+
+        // 3. Find the outermost JSON structure (array or object)
         const firstBracket = content.indexOf('[');
         const firstBrace = content.indexOf('{');
 
